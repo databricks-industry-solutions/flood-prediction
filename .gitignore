@@ -1,0 +1,18 @@
+.databricks/
+.vscode/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+.env
+
+# Node / bundler
+node_modules/
+src/app/client/dist/
+src/app/client/tsconfig.tsbuildinfo
+*.log
+
+# Editors
+.DS_Store
+*.swp

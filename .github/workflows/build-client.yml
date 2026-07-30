@@ -1,0 +1,51 @@
+name: Build client
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: build-client
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: src/app/client/package-lock.json
+
+      # Lockfiles regenerated on the Databricks network resolve to an internal
+      # npm proxy GitHub-hosted runners cannot reach, so pin the public registry.
+      # Bound the install and verify node_modules before building: npm can die
+      # without setting an exit code and leave an empty tree.
+      - name: Build React SPA
+        working-directory: src/app/client
+        env:
+          NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+          NPM_CONFIG_FETCH_TIMEOUT: '120000'
+          NPM_CONFIG_FETCH_RETRIES: '2'
+        run: |
+          set -euo pipefail
+          if [ -f package-lock.json ]; then
+            timeout 10m npm ci --no-audit --no-fund
+          else
+            timeout 10m npm install --no-audit --no-fund
+          fi
+          if [ ! -d node_modules/react ]; then
+            echo "::error::npm install did not produce node_modules; aborting before build"
+            exit 1
+          fi
+          npm run build

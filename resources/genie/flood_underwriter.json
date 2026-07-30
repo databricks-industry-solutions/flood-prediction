@@ -1,0 +1,77 @@
+{
+  "$schema": "https://docs.databricks.com/genie/space-config.schema.json",
+  "_comment": "Code-managed configuration for the underwriter-facing Genie Space. Databricks Asset Bundles do not yet have a `genie_spaces` resource type, so this file is the source of truth and is imported into the workspace via `scripts/genie_bootstrap.py`. Re-running the script is idempotent: it updates the existing space by `display_name` if one is found.",
+
+  "display_name": "Flood Underwriter",
+  "description": "Natural-language interface for underwriters and portfolio analysts to interrogate modelled flood exposure. Backed by the `gold_building_exposure` Delta table.",
+
+  "table_identifiers_template": [
+    "{catalog}.{schema}.gold_building_exposure",
+    "{catalog}.{schema}.gold_underwriting_assumptions",
+    "{catalog}.{schema}.gold_flood_events",
+    "{catalog}.{schema}.gold_scenarios",
+    "{catalog}.{schema}.gold_aoi"
+  ],
+
+  "instructions": "You are a flood-underwriting analyst for a Canadian property and casualty insurer. Your job is to answer questions about modelled flood exposure based on the gold tables in this space, in natural language, with numbers an underwriter can act on.\n\nWHAT THE DATA REPRESENTS\n- `gold_building_exposure` is the primary table. One row per (AOI, rainfall scenario, individual building). The model predicts a `flood_prob` per H3 cell per scenario; this table joins that prediction to every OSM building whose centroid sits in the cell, attaches a building-class replacement cost from `gold_underwriting_assumptions`, and computes `expected_loss_usd = flood_prob * brc_usd * loss_severity`.\n- `gold_underwriting_assumptions` holds the replacement-cost and loss-severity constants. Two rows: 'residential' and 'commercial'. Treat the dollar values as demo assumptions, not policy data.\n- `gold_flood_events` holds historical flood polygons (Quebec MELCC for Greater Montreal, currently 2017 and 2019). Use this for 'how did our predictions compare to the real 2017 flood' validation questions. The same information is denormalised into `gold_building_exposure.inside_historical_flood` (1 if the building's cell intersects any historical flood polygon).\n- `gold_scenarios` and `gold_aoi` are tiny dimension tables. `gold_scenarios.scenario_24h_mm` lists the discrete rainfall scenarios available per AOI. `gold_aoi` holds the bbox for each AOI.\n\nDEFAULTS AND CONVENTIONS\n- When the user does not specify an AOI, default to 'greater_montreal'.\n- When the user does not specify a scenario, default to 100 mm. Always remind the user which scenario you used.\n- Always filter on `aoi_name` and `scenario_24h_mm` explicitly in the SQL. These are partition keys; missing the filter scans every AOI x scenario combination.\n- Refer to rows as 'buildings', not 'records' or 'rows'.\n- Format dollar values with a `$` prefix and either `K` (thousands) or `M` (millions) suffix when the magnitude warrants it. Example: $1.2M, $750K, $250.\n- When the user asks for residential vs commercial breakdowns, group by `residential` and label 1 as 'Residential' and 0 as 'Commercial / other'.\n- `risk_tier` is a precomputed categorical: 'low' (<0.1), 'moderate' (0.1-0.3), 'high' (0.3-0.6), 'severe' (>=0.6). Prefer it over manual flood_prob thresholding when the user asks 'high-risk' style questions.\n- For 'top N' questions, default N = 20 unless the user specifies a number.\n\nSCOPE\n- You answer questions about modelled flood risk and expected loss. You do NOT explain how the underlying machine learning model works, you do NOT modify the map view, and you do NOT generate underwriting recommendations or policy decisions on behalf of the user. If asked any of these, point the user to the project README or to a human underwriter.\n- If the user asks 'is this address at risk', tell them to use the address search box in the side panel instead - that hits a different endpoint with single-building precision.\n",
+
+  "general_instructions": "Be terse. Lead with the number. Always state the AOI and scenario you queried. If the user's question is ambiguous between two valid SQL queries, pick the more conservative interpretation and call out your assumption in one sentence.",
+
+  "sample_questions": [
+    "What is total expected loss in Greater Montreal at the 100 mm scenario?",
+    "Top 20 buildings by expected loss in Greater Montreal at 150 mm",
+    "Residential vs commercial expected loss breakdown at 100 mm",
+    "How many buildings are in each risk tier in Greater Montreal at 100 mm?",
+    "Compare aggregate expected loss at 60, 100, and 150 mm in Greater Montreal",
+    "How many predicted severe-risk buildings actually sit inside the 2017 flood polygon?"
+  ],
+
+  "certified_questions": [
+    {
+      "title": "Aggregate expected loss for an AOI + scenario",
+      "question": "What is total expected loss in {aoi} at the {scenario} mm scenario?",
+      "sql_template": "SELECT ROUND(SUM(expected_loss_usd), 0) AS total_expected_loss_usd,\n       COUNT(*) AS buildings\nFROM {catalog}.{schema}.gold_building_exposure\nWHERE aoi_name = '{aoi}' AND scenario_24h_mm = {scenario};"
+    },
+    {
+      "title": "Expected loss by AOI for a fixed scenario",
+      "question": "Aggregate expected loss by AOI at {scenario} mm",
+      "sql_template": "SELECT aoi_name,\n       ROUND(SUM(expected_loss_usd), 0) AS total_expected_loss_usd,\n       COUNT(*) AS buildings\nFROM {catalog}.{schema}.gold_building_exposure\nWHERE scenario_24h_mm = {scenario}\nGROUP BY aoi_name\nORDER BY total_expected_loss_usd DESC;"
+    },
+    {
+      "title": "Residential vs commercial breakdown",
+      "question": "Residential vs commercial expected loss in {aoi} at {scenario} mm",
+      "sql_template": "SELECT CASE WHEN residential = 1 THEN 'Residential' ELSE 'Commercial / other' END AS class,\n       COUNT(*)                                  AS buildings,\n       ROUND(SUM(expected_loss_usd), 0)          AS total_expected_loss_usd,\n       ROUND(AVG(expected_loss_usd), 0)          AS avg_expected_loss_usd\nFROM {catalog}.{schema}.gold_building_exposure\nWHERE aoi_name = '{aoi}' AND scenario_24h_mm = {scenario}\nGROUP BY residential\nORDER BY total_expected_loss_usd DESC;"
+    },
+    {
+      "title": "Risk-tier counts",
+      "question": "How many buildings are in each risk tier in {aoi} at {scenario} mm?",
+      "sql_template": "SELECT risk_tier,\n       COUNT(*)                          AS buildings,\n       ROUND(SUM(expected_loss_usd), 0)  AS total_expected_loss_usd\nFROM {catalog}.{schema}.gold_building_exposure\nWHERE aoi_name = '{aoi}' AND scenario_24h_mm = {scenario}\nGROUP BY risk_tier\nORDER BY CASE risk_tier WHEN 'severe' THEN 0 WHEN 'high' THEN 1 WHEN 'moderate' THEN 2 ELSE 3 END;"
+    },
+    {
+      "title": "Top-N buildings by expected loss",
+      "question": "Top {n} buildings by expected loss in {aoi} at {scenario} mm",
+      "sql_template": "SELECT osm_id, building_type, risk_tier,\n       ROUND(flood_prob, 3)             AS flood_prob,\n       ROUND(brc_usd, 0)                AS brc_usd,\n       ROUND(expected_loss_usd, 0)      AS expected_loss_usd,\n       lon, lat\nFROM {catalog}.{schema}.gold_building_exposure\nWHERE aoi_name = '{aoi}' AND scenario_24h_mm = {scenario}\nORDER BY expected_loss_usd DESC\nLIMIT {n};"
+    },
+    {
+      "title": "Scenario stress comparison",
+      "question": "Compare aggregate expected loss across scenarios in {aoi}",
+      "sql_template": "SELECT scenario_24h_mm,\n       COUNT(*)                                                  AS buildings,\n       ROUND(SUM(expected_loss_usd), 0)                          AS total_expected_loss_usd,\n       ROUND(AVG(flood_prob), 3)                                 AS avg_flood_prob,\n       SUM(CASE WHEN risk_tier IN ('high','severe') THEN 1 ELSE 0 END) AS hi_or_severe_buildings\nFROM {catalog}.{schema}.gold_building_exposure\nWHERE aoi_name = '{aoi}'\nGROUP BY scenario_24h_mm\nORDER BY scenario_24h_mm;"
+    },
+    {
+      "title": "Geographic concentration by H3 cell",
+      "question": "Which H3 cells carry the most expected loss in {aoi} at {scenario} mm?",
+      "sql_template": "SELECT h3,\n       COUNT(*)                                  AS buildings,\n       MAX(flood_prob)                           AS flood_prob,\n       ROUND(SUM(expected_loss_usd), 0)          AS total_expected_loss_usd\nFROM {catalog}.{schema}.gold_building_exposure\nWHERE aoi_name = '{aoi}' AND scenario_24h_mm = {scenario}\nGROUP BY h3\nORDER BY total_expected_loss_usd DESC\nLIMIT 25;"
+    },
+    {
+      "title": "Validation against the historical 2017/2019 flood polygons",
+      "question": "How many predicted high-risk buildings sit inside a historical flood polygon in {aoi} at {scenario} mm?",
+      "sql_template": "SELECT risk_tier,\n       COUNT(*)                                                        AS buildings,\n       SUM(inside_historical_flood)                                    AS in_historical_flood,\n       ROUND(100.0 * SUM(inside_historical_flood) / NULLIF(COUNT(*), 0), 1) AS pct_in_historical_flood,\n       ROUND(SUM(expected_loss_usd), 0)                                AS total_expected_loss_usd\nFROM {catalog}.{schema}.gold_building_exposure\nWHERE aoi_name = '{aoi}' AND scenario_24h_mm = {scenario}\nGROUP BY risk_tier\nORDER BY CASE risk_tier WHEN 'severe' THEN 0 WHEN 'high' THEN 1 WHEN 'moderate' THEN 2 ELSE 3 END;"
+    }
+  ],
+
+  "_notes": {
+    "templating": "table_identifiers_template, sample_questions, and certified_questions use {placeholder} tokens. scripts/genie_bootstrap.py substitutes {catalog} and {schema} from the bundle variables, and leaves {aoi}/{scenario}/{n} as is - those are filled by Genie at runtime from the user prompt.",
+    "permissions": "The app's service principal must have CAN_QUERY on this space and SELECT on all five tables listed above. resources/app.yml grants the SP USAGE on the schema; CAN_QUERY on the space is granted by the bootstrap script.",
+    "warehouse": "The space queries the same serverless warehouse the FastAPI app uses (databricks.yml var.warehouse_id). If chat traffic ever fights with map renders for slots, set up a dedicated warehouse and reference its id here in a `warehouse_id` field."
+  }
+}

@@ -1,0 +1,91 @@
+bundle:
+  name: flood-prediction
+
+include:
+  - resources/*.yml
+
+sync:
+  include:
+    - "src/app/client/dist/**"
+  exclude:
+    - "src/app/client/node_modules/**"
+    - "src/app/client/src/**"
+    - "src/app/client/*.json"
+    - "src/app/client/*.ts"
+    - "src/app/client/*.html"
+    - "src/app/client/tsconfig.tsbuildinfo"
+
+variables:
+  catalog:
+    description: "Unity Catalog catalog hosting the demo"
+    default: "flood_demo"
+  schema:
+    description: "UC schema used for all tables + volume"
+    default: "montreal"
+  volume:
+    description: "UC Volume that stores raw downloaded rasters/shapes"
+    default: "raw"
+
+  aois_json:
+    description: |-
+      JSON array of AOI configurations. The pipeline fans out per entry via
+      `for_each_task` so every AOI ends up co-resident in the same catalog
+      and is selectable from the App's AOI dropdown. Each entry must include:
+        - name              short slug, also used as the volume subfolder
+                            and partition key on every Delta table
+        - min_lon / min_lat / max_lon / max_lat   bbox in EPSG:4326
+        - wkt               same bbox as a WKT polygon (used for raster clipping)
+        - flood_source      'melcc' | 'cems' | 'none' (see 01_ingest.py)
+        - cems_urls         comma-separated GeoJSON URLs (only when flood_source=cems)
+        - cems_year_default fallback year when flood_source=cems and no year is
+                            present in feature props or filenames
+      Override at deploy time with --var=aois_json=$(cat my_aois.json) if the
+      list grows beyond what's comfortable inline here.
+    default: |-
+      [
+        {"name":"greater_montreal","min_lon":"-74.05","min_lat":"45.30","max_lon":"-73.30","max_lat":"45.80","wkt":"POLYGON((-74.05 45.30, -73.30 45.30, -73.30 45.80, -74.05 45.80, -74.05 45.30))","flood_source":"melcc","cems_urls":"","cems_year_default":""},
+        {"name":"manhattan","min_lon":"-74.05","min_lat":"40.68","max_lon":"-73.90","max_lat":"40.88","wkt":"POLYGON((-74.05 40.68, -73.90 40.68, -73.90 40.88, -74.05 40.88, -74.05 40.68))","flood_source":"none","cems_urls":"","cems_year_default":""}
+      ]
+
+  for_each_concurrency:
+    description: "Max number of AOIs the pipeline will process in parallel within each stage (ingest / silver / gold / train_and_score). Bumping this above 1 reuses the same job cluster, so watch driver memory."
+    default: "1"
+
+  h3_resolution:
+    description: "H3 resolution used for feature grid (9 ~ 174 m edge)"
+    default: "9"
+
+  scenarios_24h_mm:
+    description: "Comma-separated list of 24h rainfall scenarios (mm) to pre-score. Each becomes a partition in gold_h3_flood_predictions and a tick on the app's rainfall slider."
+    default: "10,30,60,100,150,200"
+
+  warehouse_id:
+    description: "Serverless SQL warehouse the app queries. Resolved via lookup by default; override with --var=warehouse_id=<id> if you don't have a warehouse named 'Shared Unity Catalog Serverless'."
+    lookup:
+      warehouse: "Shared Unity Catalog Serverless"
+
+  genie_space_id:
+    description: |-
+      Id of the Genie Space backing the underwriter chat panel. Created
+      out-of-band by `scripts/genie_bootstrap.py` (DABs has no managed
+      `genie_space` resource type yet). Leave empty to deploy the app
+      without chat; the panel will hide itself. Bootstrap workflow:
+
+          GENIE_SPACE_ID=$(python scripts/genie_bootstrap.py \
+              --profile <p> --catalog <c> --schema <s> \
+              --warehouse-id ${var.warehouse_id} \
+              --grant-sp <app-sp-application-id>)
+          databricks bundle deploy -t dev --var=genie_space_id=$GENIE_SPACE_ID
+    default: ""
+
+  model_name:
+    description: "3-part UC model name"
+    default: "flood_demo.montreal.flood_rf"
+
+targets:
+  dev:
+    default: true
+    mode: development
+
+  prod:
+    mode: production

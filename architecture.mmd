@@ -1,0 +1,35 @@
+flowchart LR
+  subgraph ingest [Ingestion]
+    DEM[SRTM DEM]
+    HYDRO[OSM water + rivers]
+    FLOOD[Quebec 2017/2019 floods]
+    PRECIP[Open-Meteo ERA5 daily precip]
+  end
+  subgraph bronze [Bronze Delta]
+    B1[bronze_dem_manifest]
+    B2[bronze_hydrography]
+    B3[bronze_flood_events]
+    B4[bronze_precip_grid]
+  end
+  subgraph silver [Silver - GeoBrix + Spatial SQL]
+    S1[silver_h3_elev]
+    S2[silver_h3_slope]
+    S3[silver_h3_dist_water]
+    S4[silver_h3_precip]
+  end
+  subgraph gold [Gold]
+    G1[gold_h3_features]
+    G2[gold_h3_labels real]
+    G3[gold_h3_training scenario-expanded]
+    G4[gold_h3_flood_predictions partitioned by scenario]
+  end
+  ML[Spark ML RandomForest + MLflow]
+  APP[Databricks App - deck.gl H3 layer + rainfall slider]
+
+  DEM --> B1 --> S1 --> G1
+  HYDRO --> B2 --> S3 --> G1
+  FLOOD --> B3 --> G2 --> ML
+  PRECIP --> B4 --> S4 --> G1
+  S1 --> S2 --> G1
+  G1 --> G3 --> ML --> G4 --> APP
+  G2 --> APP

@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flood Prediction SA — Technical Pitch</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#x1F30A;</text></svg>">
+</head>
+<body>
+<div id="app"></div>
+<script>
+(() => {
+  const DB = {
+    orange: '#FF3621', orangeLight: '#FF6B4A', orangeDim: 'rgba(255,54,33,0.12)',
+    teal: '#1B3139', tealDark: '#0F1F25', tealDeep: '#080F14',
+    tealLight: '#2A4D5A', tealMid: '#1E3A44',
+    w: '#FFFFFF', w90: 'rgba(255,255,255,0.9)', w80: 'rgba(255,255,255,0.8)',
+    w60: 'rgba(255,255,255,0.6)', w45: 'rgba(255,255,255,0.45)',
+    w30: 'rgba(255,255,255,0.3)', w20: 'rgba(255,255,255,0.2)',
+    w10: 'rgba(255,255,255,0.1)', w05: 'rgba(255,255,255,0.04)',
+  };
+
+  const slides = [
+
+    // ─────────────────────────────── 1. COVER
+    {
+      id: 'cover',
+      bg: `radial-gradient(ellipse at 50% 35%, #162A34 0%, ${DB.tealDeep} 70%)`,
+      accent: DB.orange,
+      body: `
+        <svg class="amp-logo" width="80" height="68" viewBox="0 0 100 85" fill="none">
+          <path d="M10 60 Q25 30 50 30 T90 60 Q70 75 50 75 T10 60 Z" stroke="${DB.orange}" stroke-width="4" stroke-linejoin="round" fill="none"/>
+          <path d="M30 25 L45 10 L60 25" stroke="#22D3EE" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round" fill="none"/>
+          <path d="M55 25 L70 10 L85 25" stroke="#22D3EE" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round" fill="none"/>
+          <circle cx="20" cy="55" r="2.5" fill="${DB.orangeLight}"/>
+          <circle cx="50" cy="48" r="2.5" fill="${DB.orangeLight}"/>
+          <circle cx="80" cy="55" r="2.5" fill="${DB.orangeLight}"/>
+        </svg>
+        <div class="amp-wordmark A" style="--d:0.05s">FLOOD PREDICTION SA</div>
+        <h1 class="A" style="--d:0.12s">Spatial ML on the Lakehouse,<br>End&ndash;to&ndash;End</h1>
+        <p class="amp-tagline A" style="--d:0.2s">An Industry Solution Accelerator for Public Sector &amp; Insurance &mdash; May 2026</p>
+        <div class="amp-pills A" style="--d:0.3s">
+          <span class="amp-pill amp-pill-orange">5 Databricks Superpowers</span>
+          <span class="amp-pill amp-pill-teal">One Bundle. One City. Any City.</span>
+          <span class="amp-pill amp-pill-gold">Public Data Only</span>
+        </div>
+        <p class="amp-sub A" style="--d:0.4s">SRTM &middot; OSM &middot; Open-Meteo ERA5 &middot; Donn&eacute;es Qu&eacute;bec &mdash; deployed via DABs in one command</p>
+      `,
+    },
+
+    // ─────────────────────────────── 2. THE OPPORTUNITY
+    {
+      id: 'opportunity',
+      bg: `linear-gradient(160deg, #060D12, #0D1E27 40%, #132C38)`,
+      accent: DB.orange,
+      body: `
+        <h1>Why Build This <span style="color:${DB.orange}">Now</span></h1>
+        <h2>Flood prediction sits at a sweet spot for Databricks &mdash; deep technical breadth, urgent customer demand, public-data-only narrative</h2>
+        <div class="gap-grid">
+          <div class="gap-card A" style="--d:0.08s">
+            <div class="gap-ico gap-ico-cyan">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#22D3EE" stroke-width="1.6" stroke-linecap="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+            </div>
+            <div class="gap-num">01</div>
+            <strong>Geospatial is everywhere now</strong>
+            <p>DBR 17.1+ ships built-in <code class="ka-code">ST_*</code> and <code class="ka-code">h3_*</code> functions. GeoBrix RasterX is GA. Customers no longer need PostGIS, ESRI, or Snowflake&apos;s GEOGRAPHY. We need a flagship demo that proves it.</p>
+            <div class="gap-quote">&ldquo;Can Databricks do real geospatial?&rdquo; &mdash; every Public Sector eval ever</div>
+          </div>
+          <div class="gap-card A" style="--d:0.18s">
+            <div class="gap-ico gap-ico-rose">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#FB7185" stroke-width="1.6" stroke-linecap="round"><path d="M12 2L2 22h20L12 2z"/><line x1="12" y1="9" x2="12" y2="13"/><circle cx="12" cy="17" r=".5"/></svg>
+            </div>
+            <div class="gap-num">02</div>
+            <strong>Climate risk is a board topic</strong>
+            <p>Quebec 2017+2019 floods cost CAD 250M+. Insurance carriers are under-pricing residential flood. Every municipality in flood-prone geographies is shopping for a hyperlocal risk surface they can run themselves.</p>
+            <div class="gap-quote">Public Sector + P&amp;C Insurance + Emergency Mgmt &mdash; three audiences, one demo</div>
+          </div>
+          <div class="gap-card A" style="--d:0.28s">
+            <div class="gap-ico gap-ico-gold">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="1.6" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            </div>
+            <div class="gap-num">03</div>
+            <strong>Public data only &mdash; ship-able</strong>
+            <p>SRTM, OSM, Open-Meteo, Donn&eacute;es Qu&eacute;bec. Zero customer data, zero NDAs, zero legal review. The whole accelerator can land in <code class="ka-code">databricks-industry-solutions/</code> with a green nightly CI run.</p>
+            <div class="gap-quote">From sandbox to public GitHub repo in under one sprint</div>
+          </div>
+        </div>
+        <div class="gap-footer A" style="--d:0.4s">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${DB.orangeLight}" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+          <span>Five Databricks-only capabilities woven into one demo &mdash; none compose on a vanilla data warehouse</span>
+        </div>
+      `,
+    },
+
+    // ─────────────────────────────── 3. WHAT IT DOES
+    {
+      id: 'what',
+      bg: `radial-gradient(ellipse at 50% 30%, #162A34 0%, ${DB.tealDeep} 70%)`,
+      accent: DB.orange,
+      body: `
+        <h1>What it <span style="color:${DB.orange}">Does</span></h1>
+        <h2>Could we predict where Montreal floods next, using only public data and the Lakehouse? &mdash; the demo answers &ldquo;yes&rdquo; in 10 minutes</h2>
+        <div class="pr-arch A" style="--d:0.1s">
+          <div class="pr-box pr-box-teal">
+            <div class="pr-box-label">PUBLIC INPUTS</div>
+            <div class="pr-box-inner">
+              <div class="pr-chip">SRTM DEM</div>
+              <div class="pr-chip">OSM water</div>
+              <div class="pr-chip">QC floods</div>
+              <div class="pr-chip">ERA5 precip</div>
+            </div>
+          </div>
+          <div class="pr-arrow-h">
+            <svg width="52" height="20" viewBox="0 0 52 20" fill="none">
+              <path d="M0 10h44" stroke="${DB.w20}" stroke-width="1.5" stroke-linecap="round"/>
+              <path d="M36 2l8 8-8 8" stroke="${DB.orange}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity=".7"/>
+            </svg>
+          </div>
+          <div class="pr-box pr-box-orange">
+            <div class="pr-box-label">DABs PIPELINE</div>
+            <div class="pr-box-inner">
+              <div class="pr-chip pr-chip-orange">Bronze</div>
+              <div class="pr-chip pr-chip-orange">Silver (H3)</div>
+              <div class="pr-chip pr-chip-orange">Gold</div>
+              <div class="pr-chip pr-chip-orange">Train + Score</div>
+            </div>
+          </div>
+          <div class="pr-arrow-h">
+            <svg width="52" height="20" viewBox="0 0 52 20" fill="none">
+              <path d="M0 10h44" stroke="${DB.w20}" stroke-width="1.5" stroke-linecap="round"/>
+              <path d="M36 2l8 8-8 8" stroke="${DB.orange}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity=".7"/>
+            </svg>
+          </div>
+          <div class="pr-box pr-box-teal">
+            <div class="pr-box-label">DATABRICKS APP</div>
+            <div class="pr-box-inner">
+              <div class="pr-chip">deck.gl map</div>
+              <div class="pr-chip">Rainfall slider</div>
+              <div class="pr-chip">Address lookup</div>
+              <div class="pr-chip">Flood overlay</div>
+            </div>
+          </div>
+        </div>
+        <div class="pr-principles">
+          <div class="pr-p A" style="--d:0.22s">
+            <div class="pr-p-ico pr-ico-orange">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${DB.orange}" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/></svg>
+            </div>
+            <div>
+              <strong>One bundle, any city</strong>
+              <p>AOI bbox is a DABs variable. Override 5 vars at deploy time, get a flood model for any city on Earth.</p>
+            </div>
+          </div>
+          <div class="pr-p A" style="--d:0.3s">
+            <div class="pr-p-ico pr-ico-cyan">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22D3EE" stroke-width="1.8" stroke-linecap="round"><ellipse cx="12" cy="6" rx="9" ry="3"/><path d="M3 6v6c0 1.66 4.03 3 9 3s9-1.34 9-3V6"/></svg>
+            </div>
+            <div>
+              <strong>H3 res-9 as join key</strong>
+              <p>~174m hex cells unify rasters and vectors. Same grid for elevation, water distance, climatology, and labels.</p>
+            </div>
+          </div>
+          <div class="pr-p A" style="--d:0.38s">
+            <div class="pr-p-ico pr-ico-gold">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="1.8" stroke-linecap="round"><path d="M12 2L4 6v5c0 5.55 3.84 10.74 8 12 4.16-1.26 8-6.45 8-12V6l-8-4z"/></svg>
+            </div>
+            <div>
+              <strong>Pipeline runs in 10&ndash;20 min</strong>
+              <p>DBR 17.3 job cluster end-to-end. App runs on a serverless SQL warehouse &mdash; zero idle cost.</p>
+            </div>
+          </div>
+        </div>
+      `,
+    },
+
+    // ─────────────────────────────── 4. ARCHITECTURE
+    {
+      id: 'arch',
+      bg: `linear-gradient(160deg, #060D12, #0D1E27 40%, #132C38)`,
+      accent: DB.orange,
+      body: `
+        <h1>Architecture &mdash; <span style="color:${DB.orange}">Bronze &raquo; Silver &raquo; Gold &raquo; ML &raquo; App</span></h1>
+        <h2>Standard medallion, but with two geospatial toolkits collaborating in the same job</h2>
+        <div class="arch-diagram A" style="--d:0.1s">
+          <div class="arch-layer arch-layer-top">
+            <div class="arch-layer-label">BRONZE &mdash; raw geometry &amp; manifest rows in Delta</div>
+            <div class="arch-layer-chips">
+              <div class="arch-chip arch-chip-teal">bronze_dem_manifest (SRTM tiles)</div>
+              <div class="arch-chip arch-chip-teal">bronze_hydrography (OSM)</div>
+              <div class="arch-chip arch-chip-teal">bronze_flood_events (QC 2017/19)</div>
+              <div class="arch-chip arch-chip-teal">bronze_precip_grid (ERA5)</div>
+            </div>
+          </div>
+          <div class="arch-down"><svg width="20" height="14" viewBox="0 0 20 14" fill="none"><path d="M10 0v10M5 8l5 5 5-5" stroke="${DB.w20}" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+          <div class="arch-layer arch-layer-bridge">
+            <div class="arch-bridge-text">SILVER &mdash; H3 res-9 features, GeoBrix RasterX (rasters) + Spatial SQL ST_*/h3_* (vectors)</div>
+            <div class="arch-layer-chips" style="margin-top:8px">
+              <div class="arch-chip arch-chip-orange">silver_h3_elev</div>
+              <div class="arch-chip arch-chip-orange">silver_h3_slope</div>
+              <div class="arch-chip arch-chip-orange">silver_h3_dist_water</div>
+              <div class="arch-chip arch-chip-orange">silver_h3_precip</div>
+            </div>
+          </div>
+          <div class="arch-down"><svg width="20" height="14" viewBox="0 0 20 14" fill="none"><path d="M10 0v10M5 8l5 5 5-5" stroke="${DB.w20}" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+          <div class="arch-layer arch-layer-services">
+            <div class="arch-layer-label">GOLD &mdash; scenario-expanded features &amp; pre-scored predictions</div>
+            <div class="arch-layer-chips">
+              <div class="arch-chip arch-chip-gold">gold_h3_features</div>
+              <div class="arch-chip arch-chip-gold">gold_h3_labels (real, held out)</div>
+              <div class="arch-chip arch-chip-gold">gold_h3_training (scenario-expanded)</div>
+              <div class="arch-chip arch-chip-gold">gold_h3_flood_predictions (partitioned by mm)</div>
+            </div>
+          </div>
+          <div class="arch-down"><svg width="20" height="14" viewBox="0 0 20 14" fill="none"><path d="M10 0v10M5 8l5 5 5-5" stroke="${DB.w20}" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+          <div class="arch-layer arch-layer-db">
+            <div class="arch-layer-label arch-db-label">SERVING &mdash; Spark ML RandomForest tracked by MLflow, registered to Unity Catalog, queried by a Databricks App via Serverless SQL warehouse</div>
+            <div class="arch-db-inner">
+              <div class="arch-db-item">Spark ML <small>RandomForest classifier</small></div>
+              <div class="arch-db-item">MLflow <small>UC 3-part registered model</small></div>
+              <div class="arch-db-item arch-db-gold">Databricks App <small>FastAPI + React + deck.gl</small></div>
+            </div>
+          </div>
+        </div>
+      `,
+    },
+
+    // ─────────────────────────────── 5. FIVE SUPERPOWERS
+    {
+      id: 'superpowers',
+      bg: `radial-gradient(ellipse at 50% 35%, #162A34 0%, ${DB.tealDeep} 70%)`,
+      accent: DB.orange,
+      body: `
+        <h1>Five Databricks <span style="color:${DB.orange}">Superpowers</span> in One Demo</h1>
+        <h2>None of these compose on a vanilla data warehouse &mdash; they&rsquo;re what makes the Lakehouse the right answer for spatial ML</h2>
+        <div class="cat-grid">
+          <div class="cat-card A" style="--d:0.06s">
+            <span class="cat-phase cat-ph1">Native</span>
+            <div class="cat-ico cat-ico-cyan"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22D3EE" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10A15.3 15.3 0 0112 2z"/></svg></div>
+            <strong>Spatial SQL (DBR 17.1+)</strong>
+            <p>Built-in <code class="ka-code">ST_GeomFromGeoJSON</code>, <code class="ka-code">ST_Intersects</code>, <code class="ka-code">h3_*</code> &mdash; no UDFs, no external libs. Vector predicates at warehouse speed.</p>
+          </div>
+          <div class="cat-card A" style="--d:0.1s">
+            <span class="cat-phase cat-ph1">Labs</span>
+            <div class="cat-ico cat-ico-orange"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${DB.orangeLight}" stroke-width="1.6" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg></div>
+            <strong>GeoBrix RasterX</strong>
+            <p>Reads SRTM <code class="ka-code">.hgt</code> via GDAL, clips to AOI, tessellates pixels onto H3. Raster ops Spark-native &mdash; no PostGIS, no QGIS shop.</p>
+          </div>
+          <div class="cat-card A" style="--d:0.14s">
+            <span class="cat-phase cat-ph2">ML</span>
+            <div class="cat-ico cat-ico-purple"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="1.6" stroke-linecap="round"><path d="M3 3v18h18"/><path d="M7 17l4-4 4 4 4-7"/></svg></div>
+            <strong>Spark ML + MLflow + UC</strong>
+            <p>RandomForest pipeline, run + metrics + model registered under <code class="ka-code">catalog.schema.flood_rf</code>. Same registered name across cities, just bumps version.</p>
+          </div>
+          <div class="cat-card A" style="--d:0.18s">
+            <span class="cat-phase cat-ph2">Governance</span>
+            <div class="cat-ico cat-ico-gold"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="1.6" stroke-linecap="round"><path d="M12 2L4 6v5c0 5.55 3.84 10.74 8 12 4.16-1.26 8-6.45 8-12V6l-8-4z"/></svg></div>
+            <strong>Unity Catalog end-to-end</strong>
+            <p>Schema, Volume, model, and App-service-principal grants &mdash; all declared in DABs. Sensitive geographies stay governed; lineage is automatic.</p>
+          </div>
+          <div class="cat-card A" style="--d:0.22s">
+            <span class="cat-phase cat-ph3">Apps</span>
+            <div class="cat-ico cat-ico-rose"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FB7185" stroke-width="1.6" stroke-linecap="round"><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M3 17h18M9 21h6"/></svg></div>
+            <strong>Databricks App (deck.gl)</strong>
+            <p>FastAPI + React + deck.gl <code class="ka-code">H3HexagonLayer</code>. Auto-created service principal queries Delta via Serverless SQL &mdash; zero baked-in tokens.</p>
+          </div>
+          <div class="cat-card A" style="--d:0.26s">
+            <span class="cat-phase cat-ph3">DABs</span>
+            <div class="cat-ico cat-ico-green"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64FFDA" stroke-width="1.6" stroke-linecap="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+            <strong>Asset Bundles</strong>
+            <p>One <code class="ka-code">databricks bundle deploy</code> provisions schema, volume, registered model, multi-task job, and the App. Reusable for any AOI in minutes.</p>
+          </div>
+        </div>
+      `,
+    },
+
+    // ─────────────────────────────── 6. RAINFALL TRICK + APP (TWO-PANEL DEEP DIVE)
+    {
+      id: 'rainfall-app',
+      bg: `linear-gradient(160deg, #060D12, #0D1E27 40%, #132C38)`,
+      accent: DB.orange,
+      body: `
+        <h1>The Two Tricks That Make It <span style="color:${DB.orange}">Demo-Worthy</span></h1>
+        <h2>Scenario expansion at training time + pre-scored partitions at serving time = sub-second &ldquo;what if it rains 200 mm?&rdquo;</h2>
+        <div class="found-grid">
+          <div class="found-panel A" style="--d:0.08s">
+            <div class="found-header found-h-orange">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${DB.orangeLight}" stroke-width="1.7" stroke-linecap="round"><path d="M12 22s-8-7-8-13a8 8 0 1116 0c0 6-8 13-8 13z"/><circle cx="12" cy="9" r="2.5"/></svg>
+              <strong>Scenario expansion</strong>
+              <span class="found-h-tag">TRAINING</span>
+            </div>
+            <div class="found-body">
+              <p class="found-desc">Every H3 cell is replicated across 6 rainfall levels (10/30/60/100/150/200 mm). The Random Forest learns <code class="ka-code">scenario_24h_mm</code> as a first-class feature alongside terrain and climatology.</p>
+              <div class="found-api">
+                <div class="found-api-title">SQL CROSS JOIN</div>
+                <code>WITH scen(s) AS (VALUES (10),(30),(60),(100),(150),(200))<br>SELECT f.*, CAST(s AS DOUBLE) AS scenario_24h_mm<br>FROM gold_h3_features f CROSS JOIN scen</code>
+              </div>
+              <div class="found-note"><strong>Why it works:</strong> the model has actually seen every cell at every rainfall level &mdash; the rainfall slope is learned, not extrapolated.</div>
+            </div>
+          </div>
+          <div class="found-panel A" style="--d:0.2s">
+            <div class="found-header found-h-rose">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FB7185" stroke-width="1.7" stroke-linecap="round"><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M3 17h18"/><path d="M8 21h8"/></svg>
+              <strong>The Databricks App</strong>
+              <span class="found-h-tag">SERVING</span>
+            </div>
+            <div class="found-body">
+              <p class="found-desc">Pre-scored predictions are partitioned by <code class="ka-code">(aoi_name, scenario_24h_mm)</code>. The slider fetches a different partition &mdash; not a re-inference. Sub-second map updates.</p>
+              <div class="eval-app-features">
+                <div class="eval-af-item"><span class="eval-af-ico">&bull;</span><span><strong>deck.gl H3HexagonLayer</strong> with Viridis ramp &amp; 3D extrusion</span></div>
+                <div class="eval-af-item"><span class="eval-af-ico">&bull;</span><span><strong>24h rainfall slider</strong> snaps to scored partitions</span></div>
+                <div class="eval-af-item"><span class="eval-af-ico">&bull;</span><span><strong>Address lookup</strong> via Nominatim &rarr; H3 cell &rarr; per-cell sweep</span></div>
+                <div class="eval-af-item"><span class="eval-af-ico">&bull;</span><span><strong>2017/2019 flood overlay</strong> with live precision/recall</span></div>
+                <div class="eval-af-item"><span class="eval-af-ico">&bull;</span><span><strong>App SP authentication</strong> &mdash; no tokens in app code</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `,
+    },
+
+    // ─────────────────────────────── 7. HONEST ABOUT LABELS
+    {
+      id: 'labels',
+      bg: `radial-gradient(ellipse at 30% 30%, #162A34 0%, ${DB.tealDeep} 70%)`,
+      accent: DB.orange,
+      body: `
+        <h1>Honest About What&rsquo;s <span style="color:${DB.orange}">Synthetic</span></h1>
+        <h2>The validation pattern stakeholders trust &mdash; train on synthetic, validate on real, surface the gap live</h2>
+        <div class="found-grid">
+          <div class="found-panel A" style="--d:0.08s">
+            <div class="found-header found-h-cyan">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22D3EE" stroke-width="1.7" stroke-linecap="round"><path d="M3 3v18h18"/><path d="M7 17l4-4 4 4 4-7"/></svg>
+              <strong>Training: synthetic susceptibility</strong>
+            </div>
+            <div class="found-body">
+              <p class="found-desc">Weighted combination of low elevation, proximity to water, low slope, and wet climatology &mdash; scaled by a rain factor that saturates at &asymp;150 mm. Deterministic noise via <code class="ka-code">xxhash64(h3, scenario_24h_mm)</code> so the boundary isn&rsquo;t perfectly smooth.</p>
+              <div class="found-note"><strong>Why synthetic:</strong> 2 flood events &times; ~15k cells = nowhere near enough positive examples to train a real classifier on label scarcity alone.</div>
+            </div>
+          </div>
+          <div class="found-panel A" style="--d:0.2s">
+            <div class="found-header found-h-rose">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FB7185" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="9 12 11 14 15 10"/></svg>
+              <strong>Validation: real 2017/2019 polygons</strong>
+            </div>
+            <div class="found-body">
+              <p class="found-desc">The <strong>real flood polygons are held out entirely</strong> &mdash; never seen during training. They drive only two things: the cyan overlay on the deck.gl map, and the live precision / recall readout in the app sidebar.</p>
+              <div class="found-note"><strong>The pattern:</strong> stakeholders see model alignment with observed events. A production system swaps the synthetic signal for expanded historical data, insurance claims, or radar QPE &mdash; the rest of the pipeline stays.</div>
+            </div>
+          </div>
+        </div>
+      `,
+    },
+
+    // ─────────────────────────────── 8. CUSTOMER ANGLES
+    {
+      id: 'audiences',
+      bg: `linear-gradient(160deg, #060D12, #0D1E27 40%, #132C38)`,
+      accent: DB.orange,
+      body: `
+        <h1>Three Customer Angles, <span style="color:${DB.orange}">One Demo</span></h1>
+        <h2>The same app tells a different story to each persona &mdash; we just change the talking points, not the code</h2>
+        <div class="gap-grid">
+          <div class="gap-card A" style="--d:0.08s">
+            <div class="gap-ico gap-ico-cyan">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#22D3EE" stroke-width="1.6" stroke-linecap="round"><path d="M3 21h18M5 21V8l7-5 7 5v13"/><path d="M9 21v-6h6v6"/></svg>
+            </div>
+            <div class="gap-num">PUBLIC SECTOR</div>
+            <strong>Director of Risk Engineering</strong>
+            <p>Marie-Claude at Ville de Montr&eacute;al. After 2017+2019, mandate to publish hyperlocal risk maps. Story: governed, auditable, rebuildable for any borough.</p>
+            <div class="gap-quote">&ldquo;Ottawa, Calgary, Vancouver &mdash; same bundle, three deploys.&rdquo;</div>
+          </div>
+          <div class="gap-card A" style="--d:0.18s">
+            <div class="gap-ico gap-ico-gold">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="1.6" stroke-linecap="round"><path d="M12 2v20M5 9l7-7 7 7"/><path d="M5 15l7 7 7-7"/></svg>
+            </div>
+            <div class="gap-num">P&amp;C INSURANCE</div>
+            <strong>Underwriter / Catastrophe Modeler</strong>
+            <p>Intact, Desjardins, TD Insurance. Residential flood is consistently under-priced. Story: per-address rainfall sweep, exposure metrics from OSM buildings, rebuild for any portfolio geography.</p>
+            <div class="gap-quote">&ldquo;Show me my Quebec book at 100 mm vs. 200 mm.&rdquo;</div>
+          </div>
+          <div class="gap-card A" style="--d:0.28s">
+            <div class="gap-ico gap-ico-rose">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#FB7185" stroke-width="1.6" stroke-linecap="round"><path d="M2 22l10-20 10 20H2z"/><line x1="12" y1="10" x2="12" y2="14"/><circle cx="12" cy="18" r=".5"/></svg>
+            </div>
+            <div class="gap-num">EMERGENCY MGMT</div>
+            <strong>Provincial Coordinator</strong>
+            <p>S&eacute;curit&eacute; publique Qu&eacute;bec, Public Safety Canada. Pre-stage response based on incoming weather. Story: streaming hook for live ECCC HRDPS forecasts, alerts via Lakebase.</p>
+            <div class="gap-quote">&ldquo;Where do we pre-stage sandbags tonight?&rdquo;</div>
+          </div>
+        </div>
+        <div class="gap-footer A" style="--d:0.4s">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${DB.orangeLight}" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+          <span>Each persona is a distinct ASQ / co-build path &mdash; same Lakehouse foundation, different gold layer add-ons</span>
+        </div>
+      `,
+    },
+
+    // ─────────────────────────────── 9. STATUS & ROADMAP
+    {
+      id: 'roadmap',
+      bg: `radial-gradient(ellipse at 50% 30%, #162A34 0%, ${DB.tealDeep} 70%)`,
+      accent: DB.orange,
+      body: `
+        <h1>Status &amp; <span style="color:${DB.orange}">Roadmap</span></h1>
+        <h2>Code complete &amp; blueprint-compliant. Next stops: TD intake, public repo, and a handful of production-grade upgrades</h2>
+        <div class="ph-timeline">
+          <div class="ph-col A" style="--d:0.08s">
+            <div class="ph-hdr ph-hdr-1">
+              <div class="ph-hdr-tag">Done &mdash; May 2026</div>
+              <div class="ph-hdr-title">Built &amp; Compliant</div>
+            </div>
+            <div class="ph-services">
+              <div class="ph-svc">
+                <div class="ph-svc-ico ph-ico-orange"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${DB.orangeLight}" stroke-width="1.8" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+                <div><strong>End-to-end DABs project</strong><p>4-step pipeline + App + UC resources, AOI-parameterized</p></div>
+              </div>
+              <div class="ph-svc">
+                <div class="ph-svc-ico ph-ico-orange"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${DB.orangeLight}" stroke-width="1.8" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+                <div><strong>Blueprint compliance</strong><p>LICENSE, NOTICE, CI workflow, README badges &amp; license table</p></div>
+              </div>
+              <div class="ph-svc">
+                <div class="ph-svc-ico ph-ico-orange"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${DB.orangeLight}" stroke-width="1.8" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+                <div><strong>PRD + blog draft</strong><p>FEIP-895 PRD filled; BLOG.md ready for marketing review</p></div>
+              </div>
+            </div>
+          </div>
+          <div class="ph-divider A" style="--d:0.14s">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M12 5l7 7-7 7" stroke="${DB.w20}" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </div>
+          <div class="ph-col A" style="--d:0.2s">
+            <div class="ph-hdr ph-hdr-2">
+              <div class="ph-hdr-tag">In flight &mdash; May/Jun</div>
+              <div class="ph-hdr-title">Publication Path</div>
+            </div>
+            <div class="ph-services">
+              <div class="ph-svc">
+                <div class="ph-svc-ico ph-ico-cyan"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22D3EE" stroke-width="1.8" stroke-linecap="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/></svg></div>
+                <div><strong>TD intake call</strong><p>Milos Colic (Public Sector) &mdash; targeting May 15</p></div>
+              </div>
+              <div class="ph-svc">
+                <div class="ph-svc-ico ph-ico-cyan"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22D3EE" stroke-width="1.8" stroke-linecap="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0020 4.77 5.07 5.07 0 0019.91 1S18.73.65 16 2.48a13.38 13.38 0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 005 4.77a5.44 5.44 0 00-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 009 18.13V22"/></svg></div>
+                <div><strong>Repo into industry-solutions org</strong><p>Move + secrets wired + nightly CI flipped to <code class="ka-code">html_publisher</code></p></div>
+              </div>
+              <div class="ph-svc">
+                <div class="ph-svc-ico ph-ico-cyan"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22D3EE" stroke-width="1.8" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></div>
+                <div><strong>Source data mirror</strong><p><code class="ka-code">s3://db-gtm-industry-solutions/data/flood-prediction/</code> for stable nightly tests</p></div>
+              </div>
+            </div>
+          </div>
+          <div class="ph-divider A" style="--d:0.26s">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M12 5l7 7-7 7" stroke="${DB.w20}" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </div>
+          <div class="ph-col A" style="--d:0.32s">
+            <div class="ph-hdr ph-hdr-3">
+              <div class="ph-hdr-tag">Horizon</div>
+              <div class="ph-hdr-title">Production-Grade</div>
+            </div>
+            <div class="ph-services">
+              <div class="ph-svc ph-svc-stretch">
+                <div class="ph-svc-ico ph-ico-amber"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="1.8" stroke-linecap="round"><polyline points="2 12 6 8 10 12 14 6 18 10 22 4"/></svg></div>
+                <div><strong>HRDEM 1m DEM</strong><p>NRCan source for &times;30 resolution &mdash; tile-agnostic swap</p></div>
+              </div>
+              <div class="ph-svc ph-svc-stretch">
+                <div class="ph-svc-ico ph-ico-amber"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="1.8" stroke-linecap="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
+                <div><strong>Radar QPE + streaming</strong><p>ECCC HRDPS feed via Structured Streaming &rarr; alerts on Lakebase</p></div>
+              </div>
+              <div class="ph-svc ph-svc-stretch">
+                <div class="ph-svc-ico ph-ico-amber"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="1.8" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+                <div><strong>Real labels at scale</strong><p>Insurance claims + radar-derived flood extents replace synthetic signal</p></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `,
+    },
+
+    // ─────────────────────────────── 10. CALL TO ACTION
+    {
+      id: 'cta',
+      bg: `radial-gradient(ellipse at 50% 35%, #162A34 0%, ${DB.tealDeep} 70%)`,
+      accent: DB.orange,
+      body: `
+        <h1>Try It. Pitch It. <span style="color:${DB.orange}">Extend It.</span></h1>
+        <h2>This is an SA-built accelerator for SAs &mdash; clone, deploy, retarget any city in under 20 minutes</h2>
+        <div class="found-grid">
+          <div class="found-panel A" style="--d:0.08s">
+            <div class="found-header found-h-orange">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${DB.orangeLight}" stroke-width="1.7" stroke-linecap="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+              <strong>Deploy the demo</strong>
+            </div>
+            <div class="found-body">
+              <div class="code-snip">
+                <span class="c-comment"># 1. clone &amp; build the SPA</span>
+                <span class="c-cmd">git clone github.com/databricks-industry-solutions/flood-prediction-sa</span>
+                <span class="c-cmd">cd src/app/client &amp;&amp; npm ci &amp;&amp; npm run build</span>
+                <span class="c-comment"># 2. deploy &amp; run the bundle</span>
+                <span class="c-cmd">databricks bundle deploy -t dev</span>
+                <span class="c-cmd">databricks bundle run flood_pipeline -t dev</span>
+                <span class="c-cmd">databricks bundle run flood_app -t dev</span>
+              </div>
+              <div class="found-note"><strong>Retarget any city:</strong> <code class="ka-code">--var=aoi_name=quebec_city --var=aoi_bbox_wkt=...</code></div>
+            </div>
+          </div>
+          <div class="found-panel A" style="--d:0.2s">
+            <div class="found-header found-h-cyan">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22D3EE" stroke-width="1.7" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+              <strong>Where to take it from here</strong>
+            </div>
+            <div class="found-body">
+              <div class="eval-app-features">
+                <div class="eval-af-item"><span class="eval-af-ico">&rarr;</span><span><strong>Demo it as-is</strong> for any Public Sector / Insurance prospect with flood exposure</span></div>
+                <div class="eval-af-item"><span class="eval-af-ico">&rarr;</span><span><strong>Co-build extension</strong>: drop in HRDEM, customer claims, or live forecasts</span></div>
+                <div class="eval-af-item"><span class="eval-af-ico">&rarr;</span><span><strong>Reuse the spatial pattern</strong> for wildfire risk, supply-chain disruption, retail catchments</span></div>
+                <div class="eval-af-item"><span class="eval-af-ico">&rarr;</span><span><strong>Read the blog</strong>: <code class="ka-code">BLOG.md</code> in the repo &mdash; ready for field syndication</span></div>
+                <div class="eval-af-item"><span class="eval-af-ico">&rarr;</span><span><strong>FEIP ticket</strong>: <code class="ka-code">FEIP-895</code> for the full PRD &amp; status</span></div>
+              </div>
+              <div class="found-note"><strong>Owner:</strong> Mathieu Pelletier &mdash; ping for ASQ co-builds, customer demos, or contributing back.</div>
+            </div>
+          </div>
+        </div>
+      `,
+    },
+
+  ];
+
+  let cur = 0, moving = false;
+
+  const s = document.createElement('style');
+  s.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&display=swap');
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'DM Sans',system-ui,sans-serif;overflow:hidden;height:100vh;width:100vw;cursor:pointer;-webkit-font-smoothing:antialiased;background:${DB.tealDeep}}
+    #app{position:relative;width:100vw;height:100vh;overflow:hidden}
+    .sl{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:28px 40px;opacity:0;transform:translateY(36px) scale(.97);transition:opacity .5s cubic-bezier(.4,0,.2,1),transform .5s cubic-bezier(.4,0,.2,1);pointer-events:none;z-index:0;overflow-y:auto}
+    .sl.on{opacity:1;transform:none;pointer-events:auto;z-index:2}
+    .sl.eu{opacity:0;transform:translateY(-50px) scale(.96);z-index:1}
+    .sl.ed{opacity:0;transform:translateY(50px) scale(.96);z-index:1}
+    .sl-in{max-width:1260px;width:100%;text-align:center;display:flex;flex-direction:column;align-items:center}
+    .sl h1{font-size:clamp(1.89rem,4.3vw,2.97rem);font-weight:800;color:#fff;letter-spacing:-.03em;line-height:1.1;margin-bottom:6px;flex-shrink:0}
+    .sl h2{font-size:clamp(1.08rem,2vw,1.35rem);font-weight:400;color:${DB.w45};margin-bottom:18px;line-height:1.5;flex-shrink:0}
+    .pbar{position:fixed;top:0;left:0;height:3px;background:${DB.orange};transition:width .5s cubic-bezier(.4,0,.2,1);z-index:100;box-shadow:0 0 12px ${DB.orange}}
+    .dots{position:fixed;right:14px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:6px;z-index:100}
+    .dot{width:6px;height:6px;border-radius:50%;background:${DB.w20};cursor:pointer;transition:all .3s;border:0;padding:0}
+    .dot:hover{background:${DB.w45};transform:scale(1.3)}
+    .dot.on{background:var(--ac,${DB.orange});transform:scale(1.6);box-shadow:0 0 8px var(--ac)}
+    @keyframes fu{to{opacity:1;transform:translateY(0)}}
+    .A{opacity:0;transform:translateY(16px);animation:fu .45s ease forwards;animation-delay:var(--d,.1s)}
+    .sl.on .A{animation-play-state:running}
+
+    /* COVER */
+    .amp-logo{margin-bottom:12px;filter:drop-shadow(0 0 18px rgba(255,54,33,.3))}
+    .amp-wordmark{font-size:1.11rem;font-weight:800;letter-spacing:.32em;color:${DB.w20};margin-bottom:18px;text-transform:uppercase}
+    .amp-tagline{font-size:clamp(1.13rem,2vw,1.42rem);color:${DB.w60};margin-top:8px;margin-bottom:22px}
+    .amp-pills{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+    .amp-pill{padding:5px 16px;border-radius:20px;font-size:1.03rem;font-weight:700;letter-spacing:.03em}
+    .amp-pill-orange{background:rgba(255,54,33,.12);border:1px solid rgba(255,54,33,.3);color:${DB.orangeLight}}
+    .amp-pill-teal{background:rgba(34,211,238,.07);border:1px solid rgba(34,211,238,.2);color:#22D3EE}
+    .amp-pill-gold{background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.2);color:#F59E0B}
+    .amp-sub{font-size:0.97rem;color:${DB.w20};margin-top:14px;letter-spacing:.02em}
+
+    /* GAP CARDS */
+    .gap-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;max-width:1080px;width:100%}
+    .gap-card{padding:20px 16px 16px;border-radius:14px;background:${DB.w05};border:1px solid ${DB.w10};text-align:left;display:flex;flex-direction:column;gap:7px;transition:all .3s}
+    .gap-card:hover{transform:translateY(-3px);border-color:${DB.w20};background:rgba(255,255,255,.06)}
+    .gap-ico{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .gap-ico-rose{background:rgba(251,113,133,.08);border:1px solid rgba(251,113,133,.18)}
+    .gap-ico-amber{background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.15)}
+    .gap-ico-cyan{background:rgba(34,211,238,.06);border:1px solid rgba(34,211,238,.13)}
+    .gap-ico-gold{background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.14)}
+    .gap-num{font-size:0.78rem;font-weight:800;letter-spacing:.08em;color:${DB.w20};text-transform:uppercase}
+    .gap-card strong{font-size:1.24rem;color:#fff;font-weight:700;line-height:1.2}
+    .gap-card p{font-size:1rem;color:${DB.w45};line-height:1.55;margin:0;flex:1}
+    .gap-quote{font-size:0.92rem;color:${DB.w30};font-style:italic;padding:7px 10px;border-radius:7px;background:${DB.w05};border-left:2px solid ${DB.w10}}
+    .gap-footer{display:flex;align-items:center;gap:8px;justify-content:center;margin-top:16px;padding:9px 18px;border-radius:10px;background:rgba(255,54,33,.04);border:1px solid rgba(255,54,33,.1);font-size:1.03rem;color:${DB.w60}}
+
+    /* PRINCIPLE / WHAT */
+    .pr-arch{display:flex;align-items:center;max-width:980px;width:100%;justify-content:center;margin-bottom:14px;flex-wrap:wrap;gap:8px}
+    .pr-box{padding:14px 16px;border-radius:13px;min-width:180px;flex:1;max-width:260px}
+    .pr-box-teal{background:rgba(42,77,90,.25);border:1px solid rgba(42,77,90,.5)}
+    .pr-box-orange{background:rgba(255,54,33,.08);border:1.5px solid rgba(255,54,33,.28)}
+    .pr-box-label{font-size:0.76rem;font-weight:800;letter-spacing:.1em;color:${DB.w20};text-transform:uppercase;margin-bottom:8px;text-align:center}
+    .pr-box-inner{display:flex;flex-wrap:wrap;gap:4px;justify-content:center}
+    .pr-chip{padding:3px 8px;border-radius:5px;font-size:0.92rem;font-weight:500;color:${DB.w60};background:${DB.w05};border:1px solid ${DB.w10}}
+    .pr-chip-orange{background:rgba(255,54,33,.07);border-color:rgba(255,54,33,.18);color:${DB.orangeLight}}
+    .pr-arrow-h{flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:0 4px}
+    .pr-principles{display:flex;gap:10px;max-width:980px;width:100%;justify-content:center;flex-wrap:wrap}
+    .pr-p{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:11px;background:${DB.w05};border:1px solid ${DB.w10};flex:1;min-width:220px;text-align:left}
+    .pr-p-ico{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .pr-ico-orange{background:rgba(255,54,33,.08);border:1px solid rgba(255,54,33,.15)}
+    .pr-ico-cyan{background:rgba(34,211,238,.06);border:1px solid rgba(34,211,238,.12)}
+    .pr-ico-gold{background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.12)}
+    .pr-p strong{display:block;font-size:1.08rem;color:#fff;font-weight:700;margin-bottom:3px}
+    .pr-p p{font-size:0.94rem;color:${DB.w45};line-height:1.45;margin:0}
+
+    /* CATALOG */
+    .cat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:1000px;width:100%}
+    .cat-card{padding:14px 12px 12px;border-radius:12px;background:${DB.w05};border:1px solid ${DB.w10};text-align:left;display:flex;flex-direction:column;gap:5px;position:relative;transition:all .3s cubic-bezier(.4,0,.2,1)}
+    .cat-card:hover{transform:translateY(-3px);border-color:${DB.w20};background:rgba(255,255,255,.05);box-shadow:0 8px 24px rgba(0,0,0,.3)}
+    .cat-phase{position:absolute;top:9px;right:9px;font-size:0.73rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;padding:2px 7px;border-radius:4px}
+    .cat-ph1{background:rgba(255,54,33,.12);color:${DB.orangeLight};border:1px solid rgba(255,54,33,.2)}
+    .cat-ph2{background:rgba(34,211,238,.08);color:#22D3EE;border:1px solid rgba(34,211,238,.18)}
+    .cat-ph3{background:rgba(245,158,11,.08);color:#F59E0B;border:1px solid rgba(245,158,11,.18)}
+    .cat-ico{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-bottom:1px}
+    .cat-ico-rose{background:rgba(251,113,133,.08);border:1px solid rgba(251,113,133,.18)}
+    .cat-ico-cyan{background:rgba(34,211,238,.06);border:1px solid rgba(34,211,238,.13)}
+    .cat-ico-orange{background:rgba(255,54,33,.08);border:1px solid rgba(255,54,33,.18)}
+    .cat-ico-gold{background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.14)}
+    .cat-ico-purple{background:rgba(167,139,250,.07);border:1px solid rgba(167,139,250,.16)}
+    .cat-ico-green{background:rgba(100,255,218,.05);border:1px solid rgba(100,255,218,.12)}
+    .cat-card strong{font-size:1.07rem;color:#fff;font-weight:700;line-height:1.2;padding-right:46px}
+    .cat-card p{font-size:0.9rem;color:${DB.w45};line-height:1.45;margin:0}
+    .ka-code{font-family:monospace;font-size:.94em;background:rgba(255,255,255,.07);padding:1px 4px;border-radius:3px;color:${DB.w60}}
+
+    /* FOUND PANELS */
+    .found-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:1080px;width:100%}
+    .found-panel{border-radius:13px;background:${DB.w05};border:1px solid ${DB.w10};overflow:hidden;display:flex;flex-direction:column}
+    .found-header{display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:1.08rem;font-weight:700;color:#fff;border-bottom:1px solid ${DB.w10}}
+    .found-h-rose{background:rgba(251,113,133,.06);border-bottom-color:rgba(251,113,133,.1)}
+    .found-h-cyan{background:rgba(34,211,238,.05);border-bottom-color:rgba(34,211,238,.1)}
+    .found-h-orange{background:rgba(255,54,33,.06);border-bottom-color:rgba(255,54,33,.1)}
+    .found-h-tag{font-size:0.76rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:2px 6px;border-radius:4px;margin-left:auto;background:rgba(255,255,255,.05);color:${DB.w20}}
+    .found-body{padding:12px 14px;display:flex;flex-direction:column;gap:8px;flex:1;text-align:left}
+    .found-desc{font-size:1.03rem;color:${DB.w60};line-height:1.55;margin:0}
+    .found-api{background:rgba(0,0,0,.2);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:2px;border:1px solid ${DB.w10}}
+    .found-api-title{font-size:0.78rem;font-weight:800;letter-spacing:.08em;color:${DB.w20};text-transform:uppercase;margin-bottom:3px}
+    .found-api code{font-size:0.85rem;color:${DB.w45};font-family:monospace;line-height:1.55;display:block}
+    .found-note{font-size:0.92rem;color:${DB.w30};padding:6px 10px;border-radius:7px;background:${DB.w05};border:1px solid ${DB.w10};line-height:1.5}
+    .found-note strong{color:${DB.w60}}
+    .eval-app-features{display:flex;flex-direction:column;gap:4px;margin:6px 0}
+    .eval-af-item{display:flex;align-items:flex-start;gap:7px;padding:5px 8px;border-radius:7px;background:${DB.w05};font-size:0.94rem;color:${DB.w60};line-height:1.4}
+    .eval-af-ico{font-size:1.01rem;color:${DB.orangeLight};flex-shrink:0;margin-top:1px;font-weight:700}
+    .eval-af-item strong{color:${DB.w80}}
+
+    /* ARCHITECTURE */
+    .arch-diagram{display:flex;flex-direction:column;align-items:center;gap:3px;max-width:920px;width:100%}
+    .arch-layer{width:100%;border-radius:11px;padding:8px 12px}
+    .arch-layer-top{background:rgba(42,77,90,.2);border:1px solid rgba(42,77,90,.4)}
+    .arch-layer-bridge{background:rgba(255,54,33,.06);border:1.5px solid rgba(255,54,33,.22);padding:10px 16px}
+    .arch-layer-services{background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.14);padding:10px 12px}
+    .arch-layer-db{background:rgba(42,77,90,.14);border:1px solid rgba(42,77,90,.32);padding:10px 12px}
+    .arch-layer-label{font-size:0.82rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:${DB.w30};margin-bottom:6px;text-align:center}
+    .arch-db-label{color:rgba(100,220,200,.45) !important}
+    .arch-bridge-text{text-align:center;font-size:0.95rem;font-weight:700;color:${DB.orangeLight};letter-spacing:.02em}
+    .arch-layer-chips{display:flex;flex-wrap:wrap;gap:5px;justify-content:center}
+    .arch-chip{padding:3px 10px;border-radius:5px;font-size:0.92rem;font-weight:600}
+    .arch-chip-teal{background:rgba(42,77,90,.35);border:1px solid rgba(42,77,90,.6);color:${DB.w60}}
+    .arch-chip-orange{background:rgba(255,54,33,.08);border:1px solid rgba(255,54,33,.2);color:${DB.orangeLight}}
+    .arch-chip-gold{background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.18);color:#F59E0B}
+    .arch-down{display:flex;align-items:center;justify-content:center;height:18px}
+    .arch-db-inner{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:2px}
+    .arch-db-item{padding:7px 10px;border-radius:7px;background:rgba(42,77,90,.2);border:1px solid rgba(42,77,90,.35);font-size:0.94rem;font-weight:700;color:${DB.w80};line-height:1}
+    .arch-db-item small{display:block;font-size:0.78rem;color:${DB.w30};font-weight:400;margin-top:2px}
+    .arch-db-gold{background:rgba(245,158,11,.06);border-color:rgba(245,158,11,.16)}
+    .arch-db-gold small{color:rgba(245,158,11,.45)}
+
+    /* PHASING */
+    .ph-timeline{display:flex;align-items:stretch;gap:0;max-width:1100px;width:100%}
+    .ph-col{flex:1;display:flex;flex-direction:column;gap:0}
+    .ph-divider{display:flex;align-items:center;justify-content:center;padding:0 6px;margin-top:80px}
+    .ph-hdr{padding:12px 14px;border-radius:12px 12px 0 0;text-align:center}
+    .ph-hdr-1{background:rgba(255,54,33,.07);border:1.5px solid rgba(255,54,33,.2);border-bottom:none}
+    .ph-hdr-2{background:rgba(34,211,238,.05);border:1.5px solid rgba(34,211,238,.14);border-bottom:none}
+    .ph-hdr-3{background:rgba(245,158,11,.05);border:1.5px solid rgba(245,158,11,.13);border-bottom:none}
+    .ph-hdr-tag{font-size:0.78rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:${DB.w20};margin-bottom:1px}
+    .ph-hdr-title{font-size:1.28rem;font-weight:800;color:#fff;letter-spacing:-.02em}
+    .ph-hdr-1 .ph-hdr-title{color:${DB.orangeLight}}
+    .ph-hdr-2 .ph-hdr-title{color:#22D3EE}
+    .ph-hdr-3 .ph-hdr-title{color:#F59E0B}
+    .ph-services{flex:1;padding:10px 12px;background:${DB.w05};border:1px solid ${DB.w10};border-top:none;border-radius:0 0 12px 12px;display:flex;flex-direction:column;gap:6px}
+    .ph-svc{display:flex;align-items:flex-start;gap:8px;padding:7px 8px;border-radius:7px;background:rgba(255,255,255,.02);border:1px solid ${DB.w05};text-align:left}
+    .ph-svc-stretch{opacity:.7;border-style:dashed}
+    .ph-svc-ico{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+    .ph-ico-cyan{background:rgba(34,211,238,.06);border:1px solid rgba(34,211,238,.14)}
+    .ph-ico-orange{background:rgba(255,54,33,.08);border:1px solid rgba(255,54,33,.16)}
+    .ph-ico-amber{background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.13)}
+    .ph-svc strong{display:block;font-size:0.97rem;color:#fff;font-weight:700;line-height:1.2;margin-bottom:1px}
+    .ph-svc p{font-size:0.84rem;color:${DB.w30};margin:0;line-height:1.4}
+
+    /* CODE SNIP */
+    .code-snip{background:rgba(0,0,0,.28);border-radius:7px;padding:9px 10px;display:flex;flex-direction:column;gap:1px;border:1px solid ${DB.w10}}
+    .c-comment{font-size:0.84rem;color:${DB.w20};font-family:monospace}
+    .c-cmd{font-size:0.89rem;color:#64FFDA;font-family:monospace;padding-bottom:3px}
+
+    @media(max-width:900px){
+      .sl{padding:20px 14px}
+      .gap-grid,.found-grid{grid-template-columns:1fr}
+      .cat-grid{grid-template-columns:repeat(2,1fr)}
+      .pr-arch{flex-direction:column;align-items:center}
+      .pr-arrow-h{transform:rotate(90deg)}
+      .pr-principles{flex-direction:column}
+      .ph-timeline{flex-direction:column}
+      .ph-divider{transform:rotate(90deg);margin-top:0;margin-bottom:0;height:28px}
+      .arch-db-inner{grid-template-columns:1fr 1fr}
+      .dots{display:none}
+    }
+    @media(max-width:600px){
+      .cat-grid{grid-template-columns:1fr}
+      .arch-db-inner{grid-template-columns:1fr}
+    }
+  `;
+  document.head.appendChild(s);
+
+  const app = document.getElementById('app');
+  const pbar = document.createElement('div'); pbar.className = 'pbar'; app.appendChild(pbar);
+  const dotsEl = document.createElement('div'); dotsEl.className = 'dots'; app.appendChild(dotsEl);
+
+  const els = slides.map((sl, i) => {
+    const el = document.createElement('div');
+    el.className = 'sl' + (i === 0 ? ' on' : '');
+    el.style.background = sl.bg;
+    el.innerHTML = '<div class="sl-in">' + sl.body + '</div>';
+    app.appendChild(el);
+    return el;
+  });
+
+  slides.forEach((_, i) => {
+    const d = document.createElement('button');
+    d.className = 'dot' + (i === 0 ? ' on' : '');
+    d.onclick = e => { e.stopPropagation(); go(i); };
+    dotsEl.appendChild(d);
+  });
+
+  function ui() {
+    const sl = slides[cur];
+    document.documentElement.style.setProperty('--ac', sl.accent);
+    pbar.style.width = ((cur + 1) / slides.length * 100) + '%';
+    pbar.style.background = sl.accent;
+    pbar.style.boxShadow = '0 0 12px ' + sl.accent;
+    dotsEl.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('on', i === cur));
+  }
+
+  function go(idx) {
+    if (moving || idx === cur || idx < 0 || idx >= slides.length) return;
+    moving = true;
+    const dir = idx > cur ? 'eu' : 'ed';
+    const prev = els[cur], next = els[idx];
+    prev.classList.remove('on'); prev.classList.add(dir);
+    next.querySelectorAll('.A').forEach(el => { el.style.animation = 'none'; el.offsetHeight; el.style.animation = ''; });
+    next.classList.remove('eu', 'ed'); next.classList.add('on');
+    cur = idx; ui();
+    setTimeout(() => { prev.classList.remove('eu', 'ed'); moving = false; }, 550);
+  }
+
+  ui();
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') go(cur + 1);
+    if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') go(cur - 1);
+  });
+
+  let lastWheelT = 0;
+  document.addEventListener('wheel', e => {
+    e.preventDefault();
+    const now = Date.now();
+    if (now - lastWheelT < 700) return;
+    if (Math.abs(e.deltaY) < 10) return;
+    lastWheelT = now;
+    go(e.deltaY > 0 ? cur + 1 : cur - 1);
+  }, { passive: false });
+
+  let touchStartY = 0;
+  document.addEventListener('touchstart', e => { touchStartY = e.touches[0].clientY; }, { passive: true });
+  document.addEventListener('touchend', e => {
+    const dy = touchStartY - e.changedTouches[0].clientY;
+    if (Math.abs(dy) > 50) go(dy > 0 ? cur + 1 : cur - 1);
+  }, { passive: true });
+
+  app.addEventListener('click', e => {
+    if (e.target.closest('.dot')) return;
+    go(cur + 1);
+  });
+
+})();
+</script>
+</body>
+</html>
