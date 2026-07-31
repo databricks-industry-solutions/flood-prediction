@@ -35,11 +35,25 @@ print("Scenarios (mm/24h):", scenarios)
 # Multi-AOI co-residence: every gold table is partitioned by aoi_name and we
 # write only the active AOI's rows. `CREATE OR REPLACE TABLE ... AS SELECT`
 # would replace the whole table on each run, so we compute the rows via
-# spark.sql() and write through the DataFrame API with dynamic partition
-# overwrite — see 01_ingest.py for the full rationale.
-spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
+# spark.sql() and write through the DataFrame API scoped with Delta's
+# replaceWhere — see 01_ingest.py for the full rationale.
 
 from pyspark.sql import functions as F
+
+
+def write_aoi_partition(df, table, extra_partitions=(), options=None):
+    """Overwrite only the active AOI's partition of `table`.
+
+    `replaceWhere` is skipped on the very first write because the table does
+    not exist yet and there is nothing to replace.
+    """
+    partitions = ("aoi_name",) + tuple(extra_partitions)
+    writer = df.write.format("delta").mode("overwrite").partitionBy(*partitions)
+    for key, value in (options or {}).items():
+        writer = writer.option(key, value)
+    if spark.catalog.tableExists(table):
+        writer = writer.option("replaceWhere", f"aoi_name = '{aoi_name}'")
+    writer.saveAsTable(table)
 
 # COMMAND ----------
 
@@ -74,9 +88,7 @@ features_df = spark.sql(f"""
          LN(1.0 / (slope_deg + 0.5)) - LN(dist_to_water_m + 1.0) AS twi
   FROM joined
 """)
-(features_df.write.mode("overwrite")
-            .partitionBy("aoi_name")
-            .saveAsTable(f"{ns}.gold_h3_features"))
+write_aoi_partition(features_df, f"{ns}.gold_h3_features")
 print("gold_h3_features:",
       spark.table(f"{ns}.gold_h3_features")
            .where(F.col("aoi_name") == aoi_name).count(),
@@ -113,9 +125,7 @@ labels_df = spark.sql(f"""
   LEFT JOIN v_flood_polys f ON ST_Intersects(c.geom, f.geom)
   GROUP BY c.h3
 """)
-(labels_df.write.mode("overwrite")
-          .partitionBy("aoi_name")
-          .saveAsTable(f"{ns}.gold_h3_labels"))
+write_aoi_partition(labels_df, f"{ns}.gold_h3_labels")
 print("gold_h3_labels positives:", spark.sql(
     f"SELECT SUM(label_real) FROM {ns}.gold_h3_labels "
     f"WHERE aoi_name = '{aoi_name}'").collect()[0][0])
@@ -209,9 +219,7 @@ training_df = spark.sql(f"""
               THEN 1 ELSE 0 END AS label_synthetic
   FROM labelled
 """)
-(training_df.write.mode("overwrite")
-            .partitionBy("aoi_name")
-            .saveAsTable(f"{ns}.gold_h3_training"))
+write_aoi_partition(training_df, f"{ns}.gold_h3_training")
 print("gold_h3_training rows (this AOI):",
       spark.table(f"{ns}.gold_h3_training")
            .where(F.col("aoi_name") == aoi_name).count())

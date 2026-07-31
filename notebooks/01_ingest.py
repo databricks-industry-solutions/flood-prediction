@@ -57,12 +57,30 @@ else:
 volume_root = f"{raw_root}/{aoi_name}"
 os.makedirs(volume_root, exist_ok=True)
 
-# Multi-AOI co-residence: every bronze table is partitioned by aoi_name, and we
-# rely on dynamic partition overwrite so a `mode("overwrite")` write only
-# replaces the current AOI's partition instead of wiping the entire table.
-# Without this, running the pipeline for AOI #2 would erase AOI #1's bronze
-# rows and the App's AOI dropdown would shrink back to a single entry.
-spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
+# Multi-AOI co-residence: every bronze table is partitioned by aoi_name, and a
+# `mode("overwrite")` write must only replace the current AOI's partition
+# instead of wiping the entire table. Without that scoping, running the pipeline
+# for AOI #2 would erase AOI #1's bronze rows and the App's AOI dropdown would
+# shrink back to a single entry.
+#
+# Serverless rejects spark.sql.sources.partitionOverwriteMode=dynamic
+# (CONFIG_NOT_AVAILABLE), so we scope the overwrite with Delta's replaceWhere,
+# which behaves the same on every compute type.
+
+
+def write_aoi_partition(df, table, extra_partitions=(), options=None):
+    """Overwrite only the active AOI's partition of `table`.
+
+    `replaceWhere` is skipped on the very first write because the table does
+    not exist yet and there is nothing to replace.
+    """
+    partitions = ("aoi_name",) + tuple(extra_partitions)
+    writer = df.write.format("delta").mode("overwrite").partitionBy(*partitions)
+    for key, value in (options or {}).items():
+        writer = writer.option(key, value)
+    if spark.catalog.tableExists(table):
+        writer = writer.option("replaceWhere", f"aoi_name = '{aoi_name}'")
+    writer.saveAsTable(table)
 
 print(f"AOI {aoi_name}: ({min_lon},{min_lat}) -> ({max_lon},{max_lat})")
 print("Raw data root:", volume_root)
@@ -662,10 +680,8 @@ dem_df = spark.createDataFrame(
         StructField("max_lat", DoubleType(), False),
     ]),
 )
-(dem_df.withColumn("ingested_at", F.current_timestamp())
-       .write.mode("overwrite")
-       .partitionBy("aoi_name")
-       .saveAsTable(f"{bronze_ns}.bronze_dem_manifest"))
+write_aoi_partition(dem_df.withColumn("ingested_at", F.current_timestamp()),
+                    f"{bronze_ns}.bronze_dem_manifest")
 
 # Hydrography -> bronze (one row per feature, geometry as GeoJSON string)
 with open(hydro_path) as f:
@@ -687,10 +703,8 @@ hydro_df = spark.createDataFrame(
         StructField("geom_geojson", StringType(), False),
     ]),
 )
-(hydro_df.withColumn("ingested_at", F.current_timestamp())
-        .write.mode("overwrite")
-        .partitionBy("aoi_name")
-        .saveAsTable(f"{bronze_ns}.bronze_hydrography"))
+write_aoi_partition(hydro_df.withColumn("ingested_at", F.current_timestamp()),
+                    f"{bronze_ns}.bronze_hydrography")
 
 # Historical flood polygons -> bronze
 # `year` is synthesized in `_fetch_flood_features` from the decree start date
@@ -737,10 +751,8 @@ flood_df = spark.createDataFrame(
         StructField("geom_geojson", StringType(), False),
     ]))
 
-(flood_df.withColumn("ingested_at", F.current_timestamp())
-         .write.mode("overwrite")
-         .partitionBy("aoi_name")
-         .saveAsTable(f"{bronze_ns}.bronze_flood_events"))
+write_aoi_partition(flood_df.withColumn("ingested_at", F.current_timestamp()),
+                    f"{bronze_ns}.bronze_flood_events")
 
 # Buildings -> bronze (point centroid + residential flag + OSM-derived tags)
 with open(buildings_path) as f:
@@ -765,10 +777,8 @@ bld_schema = StructType([
 ])
 bld_df = spark.createDataFrame(bld_rows, schema=bld_schema) \
     if bld_rows else spark.createDataFrame([], schema=bld_schema)
-(bld_df.withColumn("ingested_at", F.current_timestamp())
-       .write.mode("overwrite")
-       .partitionBy("aoi_name")
-       .saveAsTable(f"{bronze_ns}.bronze_buildings"))
+write_aoi_partition(bld_df.withColumn("ingested_at", F.current_timestamp()),
+                    f"{bronze_ns}.bronze_buildings")
 
 # COMMAND ----------
 
@@ -894,10 +904,8 @@ precip_df = spark.createDataFrame(
         StructField("max5d_precip_mm", DoubleType(), False),
     ]),
 )
-(precip_df.withColumn("ingested_at", F.current_timestamp())
-          .write.mode("overwrite")
-          .partitionBy("aoi_name")
-          .saveAsTable(f"{bronze_ns}.bronze_precip_grid"))
+write_aoi_partition(precip_df.withColumn("ingested_at", F.current_timestamp()),
+                    f"{bronze_ns}.bronze_precip_grid")
 
 print("Bronze tables written:")
 for t in ("bronze_dem_manifest", "bronze_hydrography", "bronze_flood_events",

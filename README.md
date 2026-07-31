@@ -6,8 +6,9 @@
 
 End-to-end flood prediction pipeline on Databricks, combining:
 
-- **GeoBrix RasterX** for raster ingestion, clipping, slope derivation and H3 tessellation
-of a digital elevation model.
+- **GeoBrix RasterX** (lightweight tier) for raster ingestion, clipping and H3
+tessellation of a digital elevation model — pure Python, so the whole pipeline
+runs on **serverless** compute.
 - **Databricks Spatial SQL** (`ST_*` and `h3_*` built-ins, DBR 17.1+) for vector
 operations (distance to water, intersection with historical flood polygons,
 nearest-neighbour precipitation assignment).
@@ -34,20 +35,19 @@ flood-prediction-sa/
 ├── databricks.yml              # Bundle root, AOI + catalog/schema vars
 ├── resources/
 │   ├── storage.yml             # Schema, Volume, registered model
-│   ├── pipeline.yml            # Job wiring the 4 notebooks + GeoBrix libraries
-│   └── app.yml                 # Databricks App resource
+│   ├── pipeline.yml            # Serverless job wiring the 4 notebooks
+│   └── app.yml                 # Databricks App resource + runtime config/env
 ├── notebooks/
 │   ├── 01_ingest.py                  # DEM + hydro + flood polygons  ->  bronze Delta
 │   ├── 02_silver_geobrix.py          # RasterX + Spatial SQL          ->  silver H3 tables
 │   ├── 03_gold_features_labels.py    # Feature engineering + hybrid labels
 │   └── 04_train_and_score.py         # Spark ML, MLflow, scored Delta
 ├── src/
-│   ├── app/                          # Databricks App
-│   │   ├── app.yaml                  # Databricks Apps launch config
-│   │   ├── main.py                   # FastAPI backend
-│   │   ├── requirements.txt
-│   │   └── client/                   # React + deck.gl SPA
-│   └── bootstrap/                    # GeoBrix init script + wheel for the job cluster
+│   └── app/                          # Databricks App (launch command and env
+│       │                             # live in resources/app.yml)
+│       ├── main.py                   # FastAPI backend
+│       ├── requirements.txt
+│       └── client/                   # React + deck.gl SPA
 ├── scripts/cleanup.sh                # Helper for `databricks bundle destroy`
 ├── requirements.txt                  # Local dev / IDE deps
 ├── LICENSE.md / NOTICE.md / CONTRIBUTING.md / SECURITY.md
@@ -134,8 +134,8 @@ Each registry entry must include:
 ### Per-AOI parallelism
 
 `var.for_each_concurrency` (default `1`) controls how many AOIs run
-concurrently within each stage. The job cluster is reused across iterations,
-so bumping this above 1 is safe but watch driver memory on big AOIs:
+concurrently within each stage. On serverless each iteration gets its own
+compute, so raising this trades cost for wall-clock time:
 
 ```bash
 databricks bundle deploy -t dev --var=for_each_concurrency=2
@@ -210,14 +210,19 @@ them up automatically via `/api/scenarios`.
 
 ## Prerequisites
 
-- Unity Catalog workspace on AWS or Azure with:
-  - DBR **17.1+** runtime available (needed for built-in Spatial SQL).
+- Unity Catalog workspace on AWS, Azure or GCP with:
+  - **Serverless compute for jobs** enabled. The pipeline defines no clusters, so
+  there is no node SKU to pick and the bundle deploys unchanged on all three
+  clouds.
   - A **Serverless SQL Warehouse** the app can bind to. Note its id and set
   `var.warehouse_id` (or the `DATABRICKS_WAREHOUSE_ID` env in the bundle target).
-  - GeoBrix installed on the job cluster. The `resources/pipeline.yml` task uses
-  both the Maven bundle and the `databricks-labs-geobrix` PyPI wheel - pin the
-  exact versions your workspace supports (see
-  [GeoBrix docs](https://databrickslabs.github.io/geobrix/docs/installation)).
+- GeoBrix needs no setup. Notebook `02` installs it with a notebook-scoped
+  `%pip` from the public release wheel, using the
+  [lightweight tier](https://databrickslabs.github.io/geobrix/docs/quick-start?tier=lightweight)
+  — pure Python, so no JAR, no GDAL native libraries and no init script.
+  GeoBrix 0.4.3 requires `pyspark>=4.0`, which is why the job pins serverless
+  environment `client: "4"`; on `client: "3"` (pyspark 3.5.2) the install fails
+  with a `ResolutionImpossible` against the immutable package constraints.
 - The Databricks CLI 0.239.0+ (for Apps resource support).
 - `npm` (or `bun`) locally if you want to build the React SPA before deploy.
 
@@ -376,10 +381,16 @@ since a production pipeline would later replace the synthetic signal with
 expanded historical data, insurance claims, radar-based QPE, etc.
 - **H3 resolution** defaults to 9 (~174 m edge). Drop to 8 for fewer, larger
 cells or go to 10 for finer detail at higher compute cost.
-- **Spatial SQL requirement.** Notebooks `02` and `03` rely on DBR 17.1+ built-in
-`ST_`* and `h3_*` functions. If running on older DBR, swap `ST_Distance` /
-`ST_Intersects` for GeoBrix `VectorX` equivalents and `h3_centerasgeojson` for
-the H3 library's Python UDFs.
+- **Spatial SQL requirement.** Notebooks `02` and `03` rely on the built-in
+`ST_*` and `h3_*` functions, which serverless and DBR 17.1+ both provide. On
+older classic runtimes, swap `ST_Distance` / `ST_Intersects` for GeoBrix
+`VectorX` equivalents and `h3_centerasgeojson` for the H3 library's Python UDFs.
+- **DEM tile splitting.** Notebook `02` reads the DEM with
+`.option("sizeInMB", "4")`. Do not drop this: the default emits one tile per
+`.hgt` file, and tessellating a full 3601×3601 SRTM tile in one Python worker
+runs it out of memory. Splitting also means a cell on a tile boundary is
+reported once per tile, which is why the elevation query recombines the partial
+averages with a pixel-count weighting rather than averaging the averages.
 
 ## Cleanup
 
