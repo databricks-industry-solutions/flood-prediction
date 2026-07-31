@@ -4,6 +4,42 @@ resources:
       name: "flood-prediction-${bundle.target}"
       description: "Interactive flood prediction map - GeoBrix + Spatial SQL + Spark ML. AOIs come from var.aois_json; the App's dropdown lists every aoi_name present in gold_aoi."
       source_code_path: ../src/app
+
+      # Runtime config lives here rather than in src/app/app.yaml because
+      # Databricks Apps deploys app.yaml verbatim - `${var.x}` is not
+      # substituted there, so every catalog/schema/space id had to be
+      # hand-edited per workspace. Declared here, the same `--var` flags that
+      # drive the pipeline also configure the app, and nothing
+      # workspace-specific is committed.
+      config:
+        command:
+          - "uvicorn"
+          - "main:app"
+          - "--host"
+          - "0.0.0.0"
+          - "--port"
+          - "8000"
+        env:
+          - name: DATABRICKS_CATALOG
+            value: ${var.catalog}
+          # Resolves to the deployed schema name, which DAB's `mode:
+          # development` prefixes to `dev_<user>_<schema>`. Referencing the
+          # resource keeps the app pointed at whatever the deploy produced.
+          - name: DATABRICKS_SCHEMA
+            value: ${resources.schemas.flood_schema.name}
+          # DATABRICKS_HOST is deliberately absent: Databricks Apps injects it,
+          # and any entry here overrides the injected value.
+          - name: DATABRICKS_WAREHOUSE_ID
+            value_from: sql_warehouse
+          # Empty unless scripts/genie_bootstrap.py has been run; the app hides
+          # the chat panel when it is.
+          - name: DATABRICKS_GENIE_SPACE_ID
+            value: ${var.genie_space_id}
+          - name: DEFAULT_AOI
+            value: ${var.default_aoi}
+          - name: MAX_CELLS_PER_REQUEST
+            value: "50000"
+
       resources:
         - name: sql_warehouse
           description: "Warehouse used to serve predictions to the app"

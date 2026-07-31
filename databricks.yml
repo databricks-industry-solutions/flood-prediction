@@ -21,7 +21,7 @@ variables:
     default: "flood_demo"
   schema:
     description: "UC schema used for all tables + volume"
-    default: "montreal"
+    default: "area_of_interest"
   volume:
     description: "UC Volume that stores raw downloaded rasters/shapes"
     default: "raw"
@@ -54,6 +54,10 @@ variables:
   h3_resolution:
     description: "H3 resolution used for feature grid (9 ~ 174 m edge)"
     default: "9"
+
+  default_aoi:
+    description: "AOI the app selects on first load. Must match a `name` in var.aois_json."
+    default: "greater_montreal"
 
   scenarios_24h_mm:
     description: "Comma-separated list of 24h rainfall scenarios (mm) to pre-score. Each becomes a partition in gold_h3_flood_predictions and a tick on the app's rainfall slider."
