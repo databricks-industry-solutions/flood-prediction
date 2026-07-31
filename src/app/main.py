@@ -60,16 +60,42 @@ GENIE_MAX_RESULT_ROWS = int(os.environ.get("GENIE_MAX_RESULT_ROWS", "200"))
 
 NS = f"`{CATALOG}`.`{SCHEMA}`"
 
-# Databricks Apps injects DATABRICKS_HOST, DATABRICKS_HTTP_PATH (warehouse) and
-# DATABRICKS_TOKEN / or oauth automatically when a SQL Warehouse resource is attached.
-HOST = os.environ.get("DATABRICKS_HOST") or os.environ.get("DATABRICKS_WORKSPACE_HOSTNAME")
-HTTP_PATH = os.environ.get("DATABRICKS_HTTP_PATH") or os.environ.get("DATABRICKS_WAREHOUSE_HTTP_PATH")
-TOKEN = os.environ.get("DATABRICKS_TOKEN")
-CLIENT_ID = os.environ.get("DATABRICKS_CLIENT_ID")
-CLIENT_SECRET = os.environ.get("DATABRICKS_CLIENT_SECRET")
+# Databricks Apps injects DATABRICKS_HOST and the OAuth service-principal
+# credentials automatically; the warehouse id comes from the `sql_warehouse`
+# resource binding. Everything else is set by the app's `config.env` block in
+# resources/app.yml. Do NOT declare DATABRICKS_HOST there - any entry overrides
+# the injected value, and an empty one leaves the SDK reaching `https://None`.
+
+
+def _env(*names: str) -> str | None:
+    """First non-empty value among `names`, or None."""
+    for name in names:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    return None
+
+
+HOST = _env("DATABRICKS_HOST", "DATABRICKS_WORKSPACE_HOSTNAME")
+if HOST:
+    # Apps injects a full URL; the SQL connector wants a bare hostname.
+    HOST = HOST.removeprefix("https://").removeprefix("http://").rstrip("/")
+
+HTTP_PATH = _env("DATABRICKS_HTTP_PATH", "DATABRICKS_WAREHOUSE_HTTP_PATH")
+if not HTTP_PATH:
+    warehouse_id = _env("DATABRICKS_WAREHOUSE_ID")
+    if warehouse_id:
+        HTTP_PATH = f"/sql/1.0/warehouses/{warehouse_id}"
+
+TOKEN = _env("DATABRICKS_TOKEN")
+CLIENT_ID = _env("DATABRICKS_CLIENT_ID")
+CLIENT_SECRET = _env("DATABRICKS_CLIENT_SECRET")
 
 if not (HOST and HTTP_PATH):
-    log.warning("DATABRICKS_HOST / DATABRICKS_HTTP_PATH not set - API calls will fail")
+    log.warning(
+        "Databricks connection is not fully configured (host=%s, http_path=%s) - "
+        "API calls will fail", HOST, HTTP_PATH,
+    )
 
 
 PROFILE = os.environ.get("DATABRICKS_CONFIG_PROFILE")
@@ -84,6 +110,13 @@ def _connect():
     3. ``DATABRICKS_CONFIG_PROFILE`` — local dev via the CLI's stored OAuth
        (U2M) credentials.
     """
+    if not (HOST and HTTP_PATH):
+        raise RuntimeError(
+            f"Databricks connection is not configured (host={HOST}, http_path={HTTP_PATH}). "
+            "On Databricks Apps, remove any DATABRICKS_HOST entry from the app's config.env "
+            "and bind a sql_warehouse resource; locally, set DATABRICKS_HOST and "
+            "DATABRICKS_HTTP_PATH."
+        )
     kwargs: dict[str, Any] = {"server_hostname": HOST, "http_path": HTTP_PATH}
     if TOKEN:
         kwargs["access_token"] = TOKEN

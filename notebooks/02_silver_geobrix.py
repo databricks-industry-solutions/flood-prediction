@@ -11,11 +11,32 @@
 # MAGIC | `silver_h3_slope`        | h3, avg_slope_deg                          |
 # MAGIC | `silver_h3_dist_water`   | h3, dist_to_water_m                        |
 # MAGIC
-# MAGIC GeoBrix RasterX handles the DEM pipeline (clip, retile, slope, H3 tessellation
-# MAGIC via `gbx_rst_h3_rastertogridavg`). Distance-to-water uses the built-in
+# MAGIC GeoBrix RasterX handles the DEM pipeline (split, clip, H3 tessellation via
+# MAGIC `gbx_rst_h3_rastertogridavg`). Distance-to-water uses the built-in
 # MAGIC `ST_Distance` / `ST_Intersects` available in DBR 17.1+.
 # MAGIC
-# MAGIC Requires a cluster with GeoBrix installed (see the `pipeline.yml` task libs).
+# MAGIC Runs on **serverless** using the GeoBrix *lightweight* tier - pure Python
+# MAGIC (rasterio / h3 backed), no JAR and no GDAL init script.
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Install GeoBrix
+# MAGIC
+# MAGIC GeoBrix is not on PyPI, so we install the published release wheel with its
+# MAGIC `light` extra. This is a notebook-scoped install rather than a job
+# MAGIC `environments:` dependency on purpose - notebook-scoped libraries
+# MAGIC propagate to the Python workers that run the `gbx_rst_*` table functions,
+# MAGIC and they work on workspaces where the serverless environment builder
+# MAGIC cannot reach external package sources.
+
+# COMMAND ----------
+
+# MAGIC %pip install --quiet "geobrix[light] @ https://github.com/databrickslabs/geobrix/releases/download/v0.4.3/geobrix-0.4.3-py3-none-any.whl"
+
+# COMMAND ----------
+
+dbutils.library.restartPython()
 
 # COMMAND ----------
 
@@ -37,31 +58,68 @@ h3_res = int(dbutils.widgets.get("h3_resolution"))
 ns = f"{catalog}.{schema}"
 print(f"Namespace: {ns} | AOI: {aoi_name} | H3 res: {h3_res}")
 
-# Multi-AOI co-residence: every silver/gold table is partitioned by aoi_name and
-# we use dynamic partition overwrite so a `mode("overwrite")` write only
-# replaces the active AOI's partition. See 01_ingest.py for context.
-spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Register GeoBrix RasterX functions
+# MAGIC ## Per-AOI partition writes
+# MAGIC
+# MAGIC Every silver/gold table is partitioned by `aoi_name` so multiple AOIs
+# MAGIC co-exist in one catalog. Serverless rejects
+# MAGIC `spark.sql.sources.partitionOverwriteMode=dynamic`
+# MAGIC (`CONFIG_NOT_AVAILABLE`), so we scope each overwrite with Delta's
+# MAGIC `replaceWhere` instead - same effect, and it works on every compute type.
 
 # COMMAND ----------
 
-from databricks.labs.gbx.rasterx import functions as rx
-rx.register(spark)
-
 from pyspark.sql import functions as F
 
-# Dump key function signatures so the job log tells us exactly which arg shapes
-# the installed GeoBrix build expects (useful across GeoBrix versions).
-for fn in ("gbx_rst_clip", "gbx_rst_isempty", "gbx_rst_h3_rastertogridavg",
-           "gbx_rst_h3_rastertogridmin"):
-    try:
-        spark.sql(f"DESCRIBE FUNCTION EXTENDED {fn}").show(truncate=False)
-    except Exception as e:
-        print(f"  (describe {fn} failed: {e})")
+
+def write_aoi_partition(df, table, extra_partitions=(), options=None):
+    """Overwrite only the active AOI's partition of `table`.
+
+    `replaceWhere` is skipped on the very first write because the table does
+    not exist yet and there is nothing to replace.
+    """
+    partitions = ("aoi_name",) + tuple(extra_partitions)
+    writer = df.write.format("delta").mode("overwrite").partitionBy(*partitions)
+    for key, value in (options or {}).items():
+        writer = writer.option(key, value)
+    if spark.catalog.tableExists(table):
+        writer = writer.option("replaceWhere", f"aoi_name = '{aoi_name}'")
+    writer.saveAsTable(table)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Register GeoBrix RasterX (lightweight tier)
+# MAGIC
+# MAGIC `pyrx` is the pure-Python implementation - same `gbx_rst_*` SQL names as
+# MAGIC the JVM tier, no JAR or GDAL install, and the only tier that runs on
+# MAGIC serverless. The readers are not auto-registered, so we register
+# MAGIC `raster_gbx` explicitly.
+
+# COMMAND ----------
+
+from databricks.labs.gbx.pyrx import functions as rx
+from databricks.labs.gbx.ds.register import register as gbx_register
+
+rx.register(spark)
+gbx_register(spark, only=["raster_gbx"])
+
+# Fail loudly here rather than deep inside a LATERAL query if the installed
+# build is missing something we depend on.
+_required = ("gbx_rst_clip", "gbx_rst_isempty", "gbx_rst_h3_rastertogridavg",
+             "gbx_rst_h3_rastertogridmin", "gbx_rst_h3_rastertogridcount")
+_available = {r.function.split(".")[-1]
+              for r in spark.sql("SHOW FUNCTIONS LIKE 'gbx_rst_*'").collect()}
+_missing = [f for f in _required if f not in _available]
+if _missing:
+    raise RuntimeError(
+        f"GeoBrix build is missing required functions: {_missing}. "
+        f"Found {len(_available)} gbx_rst_* functions."
+    )
+print(f"GeoBrix lightweight ready ({len(_available)} gbx_rst_* functions)")
 
 # COMMAND ----------
 
@@ -74,100 +132,119 @@ manifest = spark.table(f"{ns}.bronze_dem_manifest").where(F.col("aoi_name") == a
 dem_path = manifest["dem_path"]
 print("DEM path:", dem_path)
 
-# Read every SRTM .hgt tile as a separate Spark row; GDAL's SRTMHGT driver
-# picks up tile lat/lon from the filename. One row per tile lets us parallelize
-# the clip and tessellation across the AOI.
-dem_df = spark.read.format("gdal").load(dem_path)
-print("Raw tiles loaded:", dem_df.count())
+# `raster_gbx` is the lightweight (rasterio-backed) reader. It resolves the SRTM
+# `.hgt` tiles directly - rasterio's SRTMHGT driver derives CRS and bounds from
+# the filename, so no GeoTIFF conversion step is needed.
+#
+# sizeInMB is NOT optional: the default (-1) emits one whole-image tile per file,
+# and tessellating a full 3601x3601 SRTM tile in a single Python worker exhausts
+# its memory. Splitting also gives us real parallelism across the AOI.
+DEM_TILE_SPLIT_MB = "4"
 
-# Clip each tile to the AOI polygon using the Python API - avoids SQL-vs-Scala
-# signature mismatches. `rx.rst_clip(tile_col, geom_col_or_wkb_col, cutline=True)`
-# accepts either a WKB BINARY column or a GEOMETRY column depending on build;
-# we feed it WKB bytes since they work across GeoBrix versions.
-aoi_wkb_bytes = bytes(
-    spark.sql(f"SELECT ST_AsBinary(ST_GeomFromWKT('{aoi_bbox_wkt}')) AS wkb").first()["wkb"]
-)
-dem_clip_df = (dem_df
-    .withColumn("tile", rx.rst_clip(F.col("tile"), F.lit(aoi_wkb_bytes), F.lit(True)))
-    .where(~rx.rst_isempty(F.col("tile"))))
-dem_clip_df.createOrReplaceTempView("v_dem_retile")  # kept name for downstream compat
-print("Clipped non-empty DEM tiles:", dem_clip_df.count())
+dem_df = (spark.read.format("raster_gbx")
+          .option("sizeInMB", DEM_TILE_SPLIT_MB)
+          .load(dem_path))
+dem_df.createOrReplaceTempView("v_dem_raw")
+print(f"DEM split into {dem_df.count()} tiles at sizeInMB={DEM_TILE_SPLIT_MB}")
+
+# Clip each split tile to the AOI polygon. Pixels outside the cutline become
+# nodata and are ignored by the tessellation aggregates below; tiles that fall
+# entirely outside the AOI drop out via gbx_rst_isempty.
+#
+# The tessellation aggregates (avg / count / min) each need to be evaluated
+# against the *same* set of tiles and paired per tile, so we materialize the
+# clipped tiles with a stable id first. `monotonically_increasing_id()` is only
+# stable once persisted - recomputing the view would reassign the ids and
+# silently corrupt the joins below.
+scratch_tiles = f"{ns}._scratch_dem_tiles"
+
+clipped_df = spark.sql(f"""
+    SELECT gbx_rst_clip(tile,
+                        ST_AsBinary(ST_GeomFromWKT('{aoi_bbox_wkt}')),
+                        true) AS tile
+    FROM v_dem_raw
+""").where(~rx.rst_isempty(F.col("tile")))
+
+(clipped_df
+    .withColumn("aoi_name", F.lit(aoi_name))
+    .withColumn("tile_id", F.monotonically_increasing_id())
+    .write.format("delta").mode("overwrite")
+    .option("overwriteSchema", "true")
+    .saveAsTable(scratch_tiles))
+
+spark.table(scratch_tiles).createOrReplaceTempView("v_dem_tiles")
+print("Clipped non-empty DEM tiles:", spark.table(scratch_tiles).count())
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## 2. H3 tessellation - elevation -> silver
 # MAGIC
-# MAGIC GeoBrix read + clipped the tiles above. For the pixel-to-H3 step we use
-# MAGIC rasterio + the `h3` Python library on the driver - it's 2 small SRTM tiles
-# MAGIC (~3 M valid pixels total for Greater Montreal) so this is fast and robust
-# MAGIC across GeoBrix versions.
+# MAGIC `gbx_rst_h3_rastertogrid*` maps every DEM pixel onto an H3 cell and
+# MAGIC aggregates, distributed across the split tiles. These are table functions,
+# MAGIC so they are invoked as SQL `LATERAL` calls - the Python wrappers raise
+# MAGIC `NotImplementedError` in the lightweight tier.
+# MAGIC
+# MAGIC **Seams.** Because we split the DEM, a cell sitting on a tile boundary is
+# MAGIC reported once per tile it touches, each time averaging only that tile's
+# MAGIC pixels. Averaging those partial averages would silently over-weight the
+# MAGIC tile that contributed fewer pixels, so we pull the per-tile pixel counts
+# MAGIC as well and recombine with a pixel-weighted mean. `min` needs no weighting.
 
 # COMMAND ----------
 
-import os
 import numpy as np
-import rasterio
 import h3
-from shapely.geometry import box
 from pyspark.sql.types import StructType, StructField, StringType, LongType, DoubleType
-
-tile_paths = sorted(
-    os.path.join(dem_path, fn) for fn in os.listdir(dem_path) if fn.endswith(".hgt")
-)
-print(f"Processing {len(tile_paths)} SRTM tiles from {dem_path}")
 
 aoi_bounds = (
     float(manifest["min_lon"]), float(manifest["min_lat"]),
     float(manifest["max_lon"]), float(manifest["max_lat"]),
 )
 
-# h3 -> (sum, min, count) accumulator
-h3_accumulator: dict[int, tuple[float, float, int]] = {}
+elev_df = spark.sql(f"""
+  WITH avg_cells AS (
+    SELECT r.tile_id, t.cellID AS h3, t.measure AS avg_elev
+    FROM v_dem_tiles r, LATERAL gbx_rst_h3_rastertogridavg(r.tile, {h3_res}) t
+  ),
+  cnt_cells AS (
+    SELECT r.tile_id, t.cellID AS h3, t.measure AS px
+    FROM v_dem_tiles r, LATERAL gbx_rst_h3_rastertogridcount(r.tile, {h3_res}) t
+  ),
+  min_cells AS (
+    SELECT r.tile_id, t.cellID AS h3, t.measure AS min_elev
+    FROM v_dem_tiles r, LATERAL gbx_rst_h3_rastertogridmin(r.tile, {h3_res}) t
+  )
+  SELECT a.h3,
+         SUM(a.avg_elev * c.px) / SUM(c.px) AS avg_elev,
+         MIN(m.min_elev)                    AS min_elev
+  FROM avg_cells a
+  JOIN cnt_cells c ON a.tile_id = c.tile_id AND a.h3 = c.h3
+  JOIN min_cells m ON a.tile_id = m.tile_id AND a.h3 = m.h3
+  GROUP BY a.h3
+  HAVING SUM(c.px) > 0
+""")
 
-STRIDE = 3  # subsample SRTM (~30m) by 3x3 - still ~11 samples per H3 res-9 cell
+# GeoBrix returns cellID as BIGINT on current builds, but older ones hand back
+# the hex string form. Downstream tables and the H3 built-ins both want BIGINT.
+if dict(elev_df.dtypes)["h3"] == "string":
+    elev_df = elev_df.withColumn("h3", F.conv(F.col("h3"), 16, 10).cast("long"))
 
-for tp in tile_paths:
-    with rasterio.open(tp) as src:
-        arr = src.read(1)[::STRIDE, ::STRIDE]
-        transform = src.transform
-        nodata = src.nodata if src.nodata is not None else -32768
-    rows, cols = arr.shape
-    col_idx, row_idx = np.meshgrid(np.arange(cols) * STRIDE,
-                                   np.arange(rows) * STRIDE)
-    xs = transform.c + (col_idx + 0.5) * transform.a
-    ys = transform.f + (row_idx + 0.5) * transform.e
-    mn_lon, mn_lat, mx_lon, mx_lat = aoi_bounds
-    mask = (arr != nodata) & np.isfinite(arr) \
-         & (xs >= mn_lon) & (xs <= mx_lon) & (ys >= mn_lat) & (ys <= mx_lat)
-    xs_f, ys_f, zs_f = xs[mask], ys[mask], arr[mask].astype(float)
-    print(f"  {os.path.basename(tp)}: {xs_f.size:,} pixels inside AOI")
+elev_df = (elev_df
+    .withColumn("aoi_name", F.lit(aoi_name))
+    .select(
+        F.col("aoi_name"),
+        F.col("h3").cast("long").alias("h3"),
+        F.col("avg_elev").cast("double").alias("avg_elev"),
+        F.col("min_elev").cast("double").alias("min_elev"),
+    ))
 
-    for lon, lat, z in zip(xs_f, ys_f, zs_f):
-        cell = h3.latlng_to_cell(float(lat), float(lon), h3_res)
-        cid = int(cell, 16) if isinstance(cell, str) else int(cell)
-        if cid in h3_accumulator:
-            s, mn, c = h3_accumulator[cid]
-            h3_accumulator[cid] = (s + z, z if z < mn else mn, c + 1)
-        else:
-            h3_accumulator[cid] = (z, z, 1)
-
-print(f"Total unique H3 cells at res {h3_res}: {len(h3_accumulator):,}")
-
-elev_rows = [(aoi_name, int(cid), float(s / c), float(mn))
-             for cid, (s, mn, c) in h3_accumulator.items()]
-elev_schema = StructType([
-    StructField("aoi_name", StringType(), False),
-    StructField("h3",       LongType(),   False),
-    StructField("avg_elev", DoubleType(), False),
-    StructField("min_elev", DoubleType(), False),
-])
-(spark.createDataFrame(elev_rows, elev_schema)
-      .write.mode("overwrite")
-      .partitionBy("aoi_name")
-      .saveAsTable(f"{ns}.silver_h3_elev"))
+write_aoi_partition(elev_df, f"{ns}.silver_h3_elev")
 print("silver_h3_elev:", spark.table(f"{ns}.silver_h3_elev")
       .where(F.col("aoi_name") == aoi_name).count(), "(this AOI)")
+
+# The clipped-tile rasters are only needed for the tessellation above.
+spark.sql(f"DROP TABLE IF EXISTS {scratch_tiles}")
 
 # COMMAND ----------
 
@@ -183,9 +260,9 @@ print("silver_h3_elev:", spark.table(f"{ns}.silver_h3_elev")
 
 # Use H3 built-ins available in DBR 17.1+ to find neighbours of each cell,
 # then compute max elevation difference as a proxy for slope. We compute the
-# rows for the current AOI only and write them through the DataFrame API so
-# dynamic partition overwrite applies — `CREATE OR REPLACE TABLE` would wipe
-# every other AOI on the way through.
+# rows for the current AOI only and write them through the DataFrame API so the
+# replaceWhere scope applies — `CREATE OR REPLACE TABLE` would wipe every other
+# AOI on the way through.
 slope_df = spark.sql(f"""
   WITH cells AS (
     SELECT aoi_name, h3, min_elev
@@ -210,9 +287,7 @@ slope_df = spark.sql(f"""
   FROM pairs
   GROUP BY aoi_name, h3
 """)
-(slope_df.write.mode("overwrite")
-        .partitionBy("aoi_name")
-        .saveAsTable(f"{ns}.silver_h3_slope"))
+write_aoi_partition(slope_df, f"{ns}.silver_h3_slope")
 print("silver_h3_slope:", spark.table(f"{ns}.silver_h3_slope")
       .where(F.col("aoi_name") == aoi_name).count(), "(this AOI)")
 
@@ -285,10 +360,8 @@ dist_schema = StructType([
     StructField("h3",               LongType(),   False),
     StructField("dist_to_water_m",  DoubleType(), False),
 ])
-(spark.createDataFrame(dist_rows, dist_schema)
-      .write.mode("overwrite")
-      .partitionBy("aoi_name")
-      .saveAsTable(f"{ns}.silver_h3_dist_water"))
+write_aoi_partition(spark.createDataFrame(dist_rows, dist_schema),
+                    f"{ns}.silver_h3_dist_water")
 print("silver_h3_dist_water:", spark.table(f"{ns}.silver_h3_dist_water")
       .where(F.col("aoi_name") == aoi_name).count(), "(this AOI)")
 
@@ -335,10 +408,8 @@ precip_schema = StructType([
     StructField("max24h_precip_mm",  DoubleType(), False),
     StructField("max5d_precip_mm",   DoubleType(), False),
 ])
-(spark.createDataFrame(precip_rows, precip_schema)
-      .write.mode("overwrite")
-      .partitionBy("aoi_name")
-      .saveAsTable(f"{ns}.silver_h3_precip"))
+write_aoi_partition(spark.createDataFrame(precip_rows, precip_schema),
+                    f"{ns}.silver_h3_precip")
 print("silver_h3_precip:", spark.table(f"{ns}.silver_h3_precip")
       .where(F.col("aoi_name") == aoi_name).count(), "(this AOI)")
 
@@ -374,10 +445,8 @@ bld_schema = StructType([
     StructField("building_count",    IntegerType(), False),
     StructField("residential_count", IntegerType(), False),
 ])
-(spark.createDataFrame(bld_rows, bld_schema)
-      .write.mode("overwrite")
-      .partitionBy("aoi_name")
-      .saveAsTable(f"{ns}.silver_h3_buildings"))
+write_aoi_partition(spark.createDataFrame(bld_rows, bld_schema),
+                    f"{ns}.silver_h3_buildings")
 print("silver_h3_buildings:", spark.table(f"{ns}.silver_h3_buildings")
       .where(F.col("aoi_name") == aoi_name).count(), "(this AOI)")
 

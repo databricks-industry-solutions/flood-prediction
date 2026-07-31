@@ -13,14 +13,18 @@
 
 dbutils.widgets.text("catalog", "flood_demo")
 dbutils.widgets.text("schema", "montreal")
+dbutils.widgets.text("volume", "raw")
 dbutils.widgets.text("aoi_name", "greater_montreal")
 dbutils.widgets.text("model_name", "flood_demo.montreal.flood_rf")
 dbutils.widgets.text("scenarios_24h_mm", "10,30,60,100,150,200")
+dbutils.widgets.text("h3_resolution", "9")
 
 catalog = dbutils.widgets.get("catalog")
 schema = dbutils.widgets.get("schema")
+volume = dbutils.widgets.get("volume")
 aoi_name = dbutils.widgets.get("aoi_name")
 model_name = dbutils.widgets.get("model_name")
+h3_res = int(dbutils.widgets.get("h3_resolution"))
 scenarios = [int(s.strip()) for s in dbutils.widgets.get("scenarios_24h_mm").split(",") if s.strip()]
 ns = f"{catalog}.{schema}"
 print("Scenarios (mm/24h):", scenarios)
@@ -29,7 +33,24 @@ print("Scenarios (mm/24h):", scenarios)
 # only overwrite the active AOI's partitions. Each AOI's training run still
 # registers a new UC model version under the same name — the App scores cells
 # directly off `gold_h3_flood_predictions`, so model versioning is independent.
-spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
+#
+# Serverless rejects spark.sql.sources.partitionOverwriteMode=dynamic, so the
+# scoping is done with Delta's replaceWhere instead.
+
+
+def write_aoi_partition(df, table, extra_partitions=(), options=None):
+    """Overwrite only the active AOI's partition of `table`.
+
+    `replaceWhere` is skipped on the very first write because the table does
+    not exist yet and there is nothing to replace.
+    """
+    partitions = ("aoi_name",) + tuple(extra_partitions)
+    writer = df.write.format("delta").mode("overwrite").partitionBy(*partitions)
+    for key, value in (options or {}).items():
+        writer = writer.option(key, value)
+    if spark.catalog.tableExists(table):
+        writer = writer.option("replaceWhere", f"aoi_name = '{aoi_name}'")
+    writer.saveAsTable(table)
 
 # COMMAND ----------
 
@@ -89,12 +110,16 @@ with mlflow.start_run(run_name=f"flood_rf_{aoi_name}") as run:
     sample_input = train.select(FEATURES).limit(10).toPandas()
     sample_pred = model.transform(train.limit(10)).select("prediction").toPandas()
     signature = infer_signature(sample_input, sample_pred)
+    # On serverless (and shared clusters) MLflow refuses to stage a SparkML
+    # model through the driver's local filesystem, so it needs a UC Volume to
+    # write the intermediate model directory to.
     mlflow.spark.log_model(
         spark_model=model,
         artifact_path="model",
         registered_model_name=model_name,
         input_example=sample_input.head(3),
         signature=signature,
+        dfs_tmpdir=f"/Volumes/{catalog}/{schema}/{volume}/_mlflow_tmp",
     )
 
 # COMMAND ----------
@@ -142,10 +167,9 @@ final = spark.sql("""
   FROM v_scored
 """)
 
-(final.write.mode("overwrite")
-      .option("delta.columnMapping.mode", "name")
-      .partitionBy("aoi_name", "scenario_24h_mm")
-      .saveAsTable(f"{ns}.gold_h3_flood_predictions"))
+write_aoi_partition(final, f"{ns}.gold_h3_flood_predictions",
+                    extra_partitions=("scenario_24h_mm",),
+                    options={"delta.columnMapping.mode": "name"})
 
 # gold_flood_events is the App's overlay source. We rewrite only the current
 # AOI's partition; other AOIs' rows survive untouched.
@@ -154,9 +178,7 @@ fe_df = spark.sql(f"""
   FROM {ns}.bronze_flood_events
   WHERE aoi_name = '{aoi_name}'
 """)
-(fe_df.write.mode("overwrite")
-       .partitionBy("aoi_name")
-       .saveAsTable(f"{ns}.gold_flood_events"))
+write_aoi_partition(fe_df, f"{ns}.gold_flood_events")
 
 # gold_aoi is the App's AOI-dropdown source. One row per AOI; we rewrite our
 # own row from this AOI's bronze_dem_manifest entry.
@@ -168,16 +190,12 @@ aoi_meta_df = spark.sql(f"""
   WHERE aoi_name = '{aoi_name}'
   GROUP BY aoi_name
 """)
-(aoi_meta_df.write.mode("overwrite")
-            .partitionBy("aoi_name")
-            .saveAsTable(f"{ns}.gold_aoi"))
+write_aoi_partition(aoi_meta_df, f"{ns}.gold_aoi")
 
 # Scenario registry — lets the App enumerate available rainfall partitions per AOI.
 scen_rows = [(aoi_name, int(s)) for s in scenarios]
-(spark.createDataFrame(scen_rows, ["aoi_name", "scenario_24h_mm"])
-      .write.mode("overwrite")
-      .partitionBy("aoi_name")
-      .saveAsTable(f"{ns}.gold_scenarios"))
+write_aoi_partition(spark.createDataFrame(scen_rows, ["aoi_name", "scenario_24h_mm"]),
+                    f"{ns}.gold_scenarios")
 
 _n_partitions_for_aoi = (
     spark.table(f"{ns}.gold_h3_flood_predictions")
@@ -303,10 +321,9 @@ exposure_df = spark.sql(f"""
        CASE WHEN bld.residential = 1 THEN 'residential' ELSE 'commercial' END
 """)
 
-(exposure_df.write.mode("overwrite")
-            .option("delta.columnMapping.mode", "name")
-            .partitionBy("aoi_name", "scenario_24h_mm")
-            .saveAsTable(f"{ns}.gold_building_exposure"))
+write_aoi_partition(exposure_df, f"{ns}.gold_building_exposure",
+                    extra_partitions=("scenario_24h_mm",),
+                    options={"delta.columnMapping.mode": "name"})
 
 _exposure_rows = (
     spark.table(f"{ns}.gold_building_exposure")

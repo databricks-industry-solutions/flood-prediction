@@ -51,7 +51,8 @@ def _load_spec(spec_path: Path, catalog: str, schema: str) -> dict[str, Any]:
         "display_name":      spec["display_name"],
         "description":       spec["description"],
         "table_identifiers": tables,
-        "instructions":      spec["instructions"],
+        "instructions":      sub(spec["instructions"]),
+        "general_instructions": sub(spec["general_instructions"]),
         "sample_questions":  spec["sample_questions"],
         "certified_questions": [
             {"title": cq["title"],
@@ -86,10 +87,16 @@ def _serialized_space(payload: dict[str, Any]) -> str:
 
         {
           "version": 2,
+          "config": {
+            "sample_questions": [{"id": "<32-hex uuid>", "question": ["..."]}]
+          },
           "data_sources": {
             "tables": [{"identifier": "catalog.schema.table"}]  # MUST be sorted
           },
           "instructions": {
+            "text_instructions": [
+              {"id": "<32-hex uuid>", "content": ["..."]}
+            ],
             "example_question_sqls": [
               {"id": "<32-hex uuid>", "question": ["..."], "sql": ["..."]}
             ]
@@ -98,35 +105,58 @@ def _serialized_space(payload: dict[str, Any]) -> str:
 
     Notes on the schema after probing the proto:
     * `tables` must be sorted alphabetically by identifier.
-    * `example_question_sqls[].question` and `.sql` are arrays of strings (the
-      proto allows multiple phrasings / SQL variants per pair); we ship the
-      single canonical form per certified question.
-    * `example_question_sqls[].id` must be a lowercase 32-hex UUID (no
-      hyphens) and is stable across runs - we derive it from the question
-      title so re-runs update in place instead of duplicating.
-    * The natural-language persona prompt (`general_instructions`) and
-      sample questions are NOT exposed on the create-time proto in this
-      workspace version. They live in the JSON spec (`resources/genie/
-      flood_underwriter.json`) for the SA to paste once in the UI.
+    * Free-text fields are arrays of strings throughout (the proto allows
+      multiple phrasings / SQL variants per entry); we ship the single
+      canonical form.
+    * Every `id` must be a lowercase 32-hex UUID (no hyphens) and is stable
+      across runs - we derive it from the entry's text so re-runs update in
+      place instead of duplicating.
+    * The persona prompt and the terse-answer style rules go in
+      `instructions.text_instructions` as two separate entries so the SA can
+      edit tone in the UI without touching the data dictionary, and the
+      sample questions go in `config.sample_questions` (note: `config`, not
+      `instructions` - they are chips on the empty chat, not model context).
     """
     sorted_tables = sorted(payload["table_identifiers"])
+
+    def _id(seed: str) -> str:
+        return uuid.uuid5(uuid.NAMESPACE_URL, seed).hex
+
     example_question_sqls = []
     for cq in payload["certified_questions"]:
         title_seed = cq.get("title") or cq["question"]
-        cq_id = uuid.uuid5(uuid.NAMESPACE_URL, title_seed).hex
         example_question_sqls.append({
-            "id": cq_id,
+            "id": _id(title_seed),
             "question": [cq["question"]],
             "sql": [cq["sql_template"]],
         })
     # Proto requires example_question_sqls sorted by id (lex order on hex).
     example_question_sqls.sort(key=lambda e: e["id"])
+
+    # The proto caps text_instructions at a single entry, so the data
+    # dictionary (`instructions`) and the answer-style rules
+    # (`general_instructions`) are concatenated into one block. They stay
+    # separate in the JSON spec because they are edited independently.
+    text_instructions = [{
+        "id": _id(f"{payload['display_name']}::instructions"),
+        "content": [payload["instructions"], "\n\n", payload["general_instructions"]],
+    }]
+
+    sample_questions = sorted(
+        ({"id": _id(q), "question": [q]} for q in payload["sample_questions"]),
+        key=lambda e: e["id"],
+    )
+
     spec = {
         "version": 2,
+        "config": {
+            "sample_questions": sample_questions,
+        },
         "data_sources": {
             "tables": [{"identifier": t} for t in sorted_tables],
         },
         "instructions": {
+            "text_instructions": text_instructions,
             "example_question_sqls": example_question_sqls,
         },
     }
@@ -167,13 +197,10 @@ def _create_or_update(
 
     if not space_id:
         raise RuntimeError("Genie API did not return a space id")
-    print(f"[genie] applied {len(payload['certified_questions'])} example queries "
-          f"and {len(payload['table_identifiers'])} tables via serialized_space",
-          file=sys.stderr)
-    print("[genie] NOTE: persona prompt and sample questions are not exposed on "
-          "the create API in this workspace version. Paste them once from "
-          "resources/genie/flood_underwriter.json into the space's "
-          "Settings -> Instructions / Sample Questions.", file=sys.stderr)
+    print(f"[genie] applied {len(payload['table_identifiers'])} tables, "
+          f"{len(payload['certified_questions'])} example queries, "
+          f"{len(payload['sample_questions'])} sample questions and the "
+          "instruction block via serialized_space", file=sys.stderr)
     return space_id
 
 

@@ -6,38 +6,49 @@ resources:
       tags:
         demo: "flood-prediction"
 
-      job_clusters:
-        - job_cluster_key: geobrix_cluster
-          new_cluster:
-            # GeoBrix v0.2.0 targets DBR 17.3; DBR 17.1+ has built-in Spatial SQL.
-            spark_version: "17.3.x-scala2.13"
-            # Modern AMD v5 SKU - 4 vCPU / 16 GB. Switched from Standard_DS3_v2
-            # because that older SKU hits regional capacity limits.
-            node_type_id: "Standard_D4ads_v5"
-            num_workers: 2
-            data_security_mode: SINGLE_USER
-            runtime_engine: STANDARD
-            spark_conf:
-              spark.databricks.geo.st.enabled: "true"
-              # Required for the per-AOI partition writes the notebooks do —
-              # without dynamic mode, mode("overwrite") wipes the entire
-              # table on every run, defeating multi-AOI co-residence.
-              spark.sql.sources.partitionOverwriteMode: "dynamic"
-            # Stream init-script + driver/executor logs to the demo volume so
-            # we can `cat` them when something like INIT_SCRIPT_FAILURE happens.
-            cluster_log_conf:
-              volumes:
-                destination: /Volumes/${var.catalog}/${resources.schemas.flood_schema.name}/${var.volume}/_cluster_logs
-            init_scripts:
-              # Workspace-file init script fetches GeoBrix JAR + native libs
-              # from the public GitHub release at cluster start; no Volume needed.
-              - workspace:
-                  destination: ${workspace.file_path}/src/bootstrap/geobrix-gdal-init.sh
+      # Serverless. There is no cluster to size, no init script, and no
+      # cloud-specific node SKU — the bundle deploys unchanged on AWS, Azure and
+      # GCP. This is possible because we use the GeoBrix *lightweight* tier: a
+      # pure-Python (rasterio-backed) implementation of the same gbx_rst_*
+      # functions, with no JAR and no GDAL native libraries to install.
+      #
+      # Spatial SQL (ST_*) and the H3 built-ins are part of serverless already,
+      # so nothing extra is needed for those.
+      environments:
+        - environment_key: ingest
+          spec:
+            environment_version: "4"
+            dependencies:
+              - "requests==2.32.3"
+              - "shapely==2.0.4"
+
+        # Notebook 02 installs GeoBrix itself with a notebook-scoped `%pip`, so
+        # this environment is intentionally empty. Declaring the wheel here
+        # instead fails on workspaces whose serverless environment builder
+        # cannot fetch external packages, and notebook-scoped installs are what
+        # propagate to the Python workers running the gbx_rst_* table functions.
+        - environment_key: geobrix
+          spec:
+            environment_version: "4"
+            dependencies: []
+
+        - environment_key: gold
+          spec:
+            environment_version: "4"
+            dependencies:
+              - "h3>=4.1,<5"
+
+        - environment_key: train
+          spec:
+            environment_version: "4"
+            dependencies:
+              - "mlflow>=2.14.0"
+              - "h3>=4.1,<5"
 
       # Each pipeline stage is a `for_each_task` that fans out over every entry
       # in var.aois_json. Stages run sequentially (silver waits for ingest of
       # *all* AOIs, etc.) but iterations within a stage can run in parallel up
-      # to var.for_each_concurrency. The job cluster is reused across iterations.
+      # to var.for_each_concurrency.
       tasks:
         - task_key: ingest
           for_each_task:
@@ -45,7 +56,7 @@ resources:
             concurrency: ${var.for_each_concurrency}
             task:
               task_key: ingest_aoi
-              job_cluster_key: geobrix_cluster
+              environment_key: ingest
               notebook_task:
                 notebook_path: ../notebooks/01_ingest.py
                 base_parameters:
@@ -60,11 +71,6 @@ resources:
                   flood_source: "{{input.flood_source}}"
                   cems_urls: "{{input.cems_urls}}"
                   cems_year_default: "{{input.cems_year_default}}"
-              libraries:
-                - pypi:
-                    package: "requests==2.32.3"
-                - pypi:
-                    package: "shapely==2.0.4"
 
         - task_key: silver
           depends_on:
@@ -74,7 +80,7 @@ resources:
             concurrency: ${var.for_each_concurrency}
             task:
               task_key: silver_aoi
-              job_cluster_key: geobrix_cluster
+              environment_key: geobrix
               notebook_task:
                 notebook_path: ../notebooks/02_silver_geobrix.py
                 base_parameters:
@@ -84,15 +90,6 @@ resources:
                   aoi_name: "{{input.name}}"
                   aoi_bbox_wkt: "{{input.wkt}}"
                   h3_resolution: ${var.h3_resolution}
-              libraries:
-                # JAR + GDAL natives come from the init script; wheel is shipped in the bundle.
-                - whl: ${workspace.file_path}/src/bootstrap/wheels/geobrix-0.2.0-py3-none-any.whl
-                - pypi:
-                    package: "h3==4.1.0"
-                - pypi:
-                    package: "rasterio==1.3.10"
-                - pypi:
-                    package: "shapely==2.0.4"
 
         - task_key: gold
           depends_on:
@@ -102,7 +99,7 @@ resources:
             concurrency: ${var.for_each_concurrency}
             task:
               task_key: gold_aoi
-              job_cluster_key: geobrix_cluster
+              environment_key: gold
               notebook_task:
                 notebook_path: ../notebooks/03_gold_features_labels.py
                 base_parameters:
@@ -111,9 +108,6 @@ resources:
                   aoi_name: "{{input.name}}"
                   h3_resolution: ${var.h3_resolution}
                   scenarios_24h_mm: ${var.scenarios_24h_mm}
-              libraries:
-                - pypi:
-                    package: "h3==4.1.0"
 
         - task_key: train_and_score
           depends_on:
@@ -123,17 +117,14 @@ resources:
             concurrency: ${var.for_each_concurrency}
             task:
               task_key: train_and_score_aoi
-              job_cluster_key: geobrix_cluster
+              environment_key: train
               notebook_task:
                 notebook_path: ../notebooks/04_train_and_score.py
                 base_parameters:
                   catalog: ${var.catalog}
                   schema: ${resources.schemas.flood_schema.name}
+                  volume: ${var.volume}
                   aoi_name: "{{input.name}}"
                   model_name: ${var.catalog}.${resources.schemas.flood_schema.name}.${resources.registered_models.flood_rf.name}
                   scenarios_24h_mm: ${var.scenarios_24h_mm}
-              libraries:
-                - pypi:
-                    package: "mlflow>=2.14.0"
-                - pypi:
-                    package: "h3==4.1.0"
+                  h3_resolution: ${var.h3_resolution}
