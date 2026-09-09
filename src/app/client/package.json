@@ -14,7 +14,7 @@
     "@deck.gl/geo-layers": "^9.0.32",
     "@deck.gl/layers": "^9.0.32",
     "@deck.gl/react": "^9.0.32",
-    "maplibre-gl": "^4.7.1",
+    "maplibre-gl": "^6.8.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-map-gl": "^7.1.7"
